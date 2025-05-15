@@ -21,7 +21,8 @@ std::string extract_middle_frame(const std::string& videoPath, const std::string
 }
 
 bool set_wallpaper_all_spaces(const std::string& imagePath) {
-    std::string cmd = "automator -i \"" + imagePath + "\" setDesktopPix.workflow";
+    // std::string cmd = "automator -i \"" + imagePath + "\" setDesktopPix.workflow";
+    std::string cmd = "osascript -e 'tell application \"System Events\" to set picture of every desktop to \"" + imagePath + "\"'";
     return std::system(cmd.c_str()) == 0;
 }
 
