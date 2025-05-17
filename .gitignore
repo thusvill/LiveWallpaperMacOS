@@ -1,1 +1,4 @@
 LiveWallpaperApp
+build
+build/**
+CMakeLists.txt
