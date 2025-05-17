@@ -59,6 +59,8 @@ void handleSpaceChange(NSNotification *note) {
     }
 }
 
+
+
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @property (strong) NSWindow *window;
 @property (strong) NSWindow *blurWindow;
@@ -68,7 +70,113 @@ void handleSpaceChange(NSNotification *note) {
 
 @implementation AppDelegate
 
+
+NSStackView *gridContainer = [[NSStackView alloc] init];
 NSScreen *mainScreen = NULL;
+NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
+NSView *content;
+
+
+
+
+- (void)ReloadContent {
+    if (buttons.count > 0) {
+    [buttons removeAllObjects];
+}
+    NSString *videoDir = [NSHomeDirectory() stringByAppendingPathComponent:@"Livewall"];
+    NSArray<NSString *> *allFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:videoDir error:nil];
+
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF ENDSWITH[c] '.mp4' OR SELF ENDSWITH[c] '.mov'"];
+    NSArray<NSString *> *videoFiles = [allFiles filteredArrayUsingPredicate:predicate];
+
+    
+
+
+
+for (NSString *filename in videoFiles) {
+    NSString *videoPath = [videoDir stringByAppendingPathComponent:filename];
+    NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
+
+    AVAsset *asset = [AVAsset assetWithURL:videoURL];
+    AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+    imageGenerator.appliesPreferredTrackTransform = YES;
+
+    CMTime midpoint = CMTimeMakeWithSeconds(2.0, 600); 
+    CGImageRef thumbImageRef = NULL;
+    NSError *error = nil;
+    thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint actualTime:NULL error:&error];
+
+    NSImage *thumbImage = nil;
+    if (thumbImageRef && !error) {
+        thumbImage = [[NSImage alloc] initWithCGImage:thumbImageRef size:NSMakeSize(160, 90)];
+        CGImageRelease(thumbImageRef);
+    }
+
+    NSButton *btn = [[NSButton alloc] init];
+    btn.image = thumbImage ?: [NSImage imageNamed:NSImageNameCaution];
+    btn.bezelStyle = NSBezelStyleShadowlessSquare;
+    btn.imageScaling = NSImageScaleProportionallyUpOrDown;
+    btn.title = @"";
+    btn.target = self;
+    btn.action = @selector(handleButtonClick:);
+    btn.toolTip = filename;
+
+    btn.title = filename; 
+    btn.bezelStyle = NSBezelStyleShadowlessSquare;
+    btn.imageScaling = NSImageScaleAxesIndependently;
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.tag = [videoFiles indexOfObject:filename];
+    [buttons addObject:btn];
+}
+
+
+
+}
+
+- (void)reloadGrid:(id)sender {
+    [self ReloadContent];
+    
+    for (NSView *subview in gridContainer.arrangedSubviews) {
+        [gridContainer removeArrangedSubview:subview];
+        [subview removeFromSuperview];
+    }
+
+    CGFloat spacing = 12.0;
+    CGFloat padding = 24.0;
+    
+    CGFloat containerWidth = NSWidth(self.blurWindow.contentView.frame) - padding;
+    if (containerWidth < 0) containerWidth = 0;
+    
+    CGFloat minThumbWidth = 160.0;
+    NSUInteger columns = (NSUInteger)(containerWidth / (minThumbWidth + spacing));
+    if (columns < 1) columns = 1;
+    
+    CGFloat thumbWidth = (containerWidth - (columns - 1) * spacing) / columns;
+    CGFloat thumbHeight = thumbWidth * 9.0 / 16.0;
+    
+    NSUInteger totalButtons = buttons.count;
+    NSUInteger rows = (totalButtons + columns - 1) / columns;
+
+    for (NSUInteger row = 0; row < rows; row++) {
+        NSStackView *rowStack = [[NSStackView alloc] init];
+        rowStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+        rowStack.spacing = spacing;
+        rowStack.distribution = NSStackViewDistributionFill;
+        
+        for (NSUInteger col = 0; col < columns; col++) {
+            NSUInteger idx = row * columns + col;
+            if (idx < totalButtons) {
+                NSButton *btn = buttons[idx];
+                [btn.widthAnchor constraintEqualToConstant:thumbWidth].active = YES;
+                [btn.heightAnchor constraintEqualToConstant:thumbHeight].active = YES;
+                [rowStack addArrangedSubview:btn];
+            }
+        }
+        [gridContainer addArrangedSubview:rowStack];
+    }
+}
+
+
 - (void)startWallpaperWithPath:(NSString *)videoPath {
     g_videoPath = [videoPath UTF8String];
 
@@ -133,6 +241,13 @@ NSScreen *mainScreen = NULL;
     [self startWallpaperWithPath:videoPath];
 }
 
+- (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
+    // Fix width, allow height to change
+    CGFloat fixedWidth = 800;  // your fixed width
+    return NSMakeSize(fixedWidth, proposedFrameSize.height);
+}
+
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     [[[NSWorkspace sharedWorkspace] notificationCenter]
         addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
@@ -154,8 +269,7 @@ NSScreen *mainScreen = NULL;
     [self.blurWindow center];
     [self.blurWindow makeKeyAndOrderFront:nil];
     [self.blurWindow setShowsResizeIndicator:YES];
-     self.blurWindow.delegate = self;
-
+    self.blurWindow.delegate = self;
 
     NSVisualEffectView *blurView = [[NSVisualEffectView alloc] initWithFrame:[[self.blurWindow contentView] bounds]];
     [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
@@ -164,124 +278,112 @@ NSScreen *mainScreen = NULL;
     [blurView setState:NSVisualEffectStateActive];
 
     [[self.blurWindow contentView] addSubview:blurView positioned:NSWindowBelow relativeTo:nil];
-    NSView *content = [self.blurWindow contentView];
+    content = [self.blurWindow contentView];
 
-    NSString *videoDir = [NSHomeDirectory() stringByAppendingPathComponent:@"Livewall"];
-    NSArray<NSString *> *allFiles = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:videoDir error:nil];
+    NSStackView *mainStack = [[NSStackView alloc] init];
+    mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    mainStack.distribution = NSStackViewDistributionFill; // scrollView fills remaining space
+mainStack.alignment = NSLayoutAttributeLeading;
+    mainStack.spacing = 12;
+    mainStack.translatesAutoresizingMaskIntoConstraints = NO;
+    [content addSubview:mainStack];
 
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF ENDSWITH[c] '.mp4' OR SELF ENDSWITH[c] '.mov'"];
-    NSArray<NSString *> *videoFiles = [allFiles filteredArrayUsingPredicate:predicate];
+    [NSLayoutConstraint activateConstraints:@[
+        [mainStack.topAnchor constraintEqualToAnchor:content.topAnchor constant:12],
+        [mainStack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:12],
+        [mainStack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-12],
+        [mainStack.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-12],
+    ]];
 
-    NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
+    NSButton *reloadButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+    [reloadButton setTitle:@"Reload"];
+    [reloadButton setBezelStyle:NSBezelStyleRounded];
+    [reloadButton setTarget:self];
+    [reloadButton setAction:@selector(reloadGrid:)];
 
+    gridContainer = [[NSStackView alloc] init];
+    gridContainer.orientation = NSUserInterfaceLayoutOrientationVertical;
+    gridContainer.spacing = 12;
+    gridContainer.edgeInsets = NSEdgeInsetsMake(12, 12, 12, 12);
+    gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
 
-if(reload){
-for (NSString *filename in videoFiles) {
-    NSString *videoPath = [videoDir stringByAppendingPathComponent:filename];
-    NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
-
-    AVAsset *asset = [AVAsset assetWithURL:videoURL];
-    AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    imageGenerator.appliesPreferredTrackTransform = YES;
-
-    CMTime midpoint = CMTimeMakeWithSeconds(2.0, 600); 
-    CGImageRef thumbImageRef = NULL;
-    NSError *error = nil;
-    thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint actualTime:NULL error:&error];
-
-    NSImage *thumbImage = nil;
-    if (thumbImageRef && !error) {
-        thumbImage = [[NSImage alloc] initWithCGImage:thumbImageRef size:NSMakeSize(160, 90)];
-        CGImageRelease(thumbImageRef);
-    }
-
-    NSButton *btn = [[NSButton alloc] init];
-    btn.image = thumbImage ?: [NSImage imageNamed:NSImageNameCaution];
-    btn.bezelStyle = NSBezelStyleShadowlessSquare;
-    btn.imageScaling = NSImageScaleProportionallyUpOrDown;
-    btn.title = @"";
-    btn.target = self;
-    btn.action = @selector(handleButtonClick:);
-    btn.toolTip = filename;
-
-    btn.title = filename; 
-    btn.bezelStyle = NSBezelStyleShadowlessSquare;
-    btn.imageScaling = NSImageScaleAxesIndependently;
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.tag = [videoFiles indexOfObject:filename];
-    [buttons addObject:btn];
-}
-NSLog(@"Reloaded!");
-reload = false;
-}
+    NSScrollView *scrollView = [[NSScrollView alloc] init];
 
 
+    [mainStack addArrangedSubview:reloadButton];
+[mainStack addArrangedSubview:scrollView];
+    
+    // Add scrollView to mainStack or window's contentView
+        scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    scrollView.hasVerticalScroller = YES;
+    scrollView.hasHorizontalScroller = NO;
+    scrollView.borderType = NSNoBorder;
+    scrollView.documentView = gridContainer;
+    scrollView.drawsBackground = NO;
 
 
-   NSUInteger columns = 4;
-CGFloat spacing = 12.0;
-CGFloat thumbWidth = 160.0;
-CGFloat thumbHeight = thumbWidth * 9.0 / 16.0;
+// ScrollView constraints (if added to window contentView directly)
+// scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+// [NSLayoutConstraint activateConstraints:@[
+//     [scrollView.topAnchor constraintEqualToAnchor:mainStack.topAnchor],
+//     [scrollView.leadingAnchor constraintEqualToAnchor:mainStack.leadingAnchor],
+//     [scrollView.trailingAnchor constraintEqualToAnchor:mainStack.trailingAnchor],
+//     [scrollView.bottomAnchor constraintEqualToAnchor:mainStack.bottomAnchor],
+// ]];
 
-NSMutableArray *gridRows = [NSMutableArray array];
+// scrollView properties
+scrollView.hasVerticalScroller = YES;
+scrollView.hasHorizontalScroller = NO;
+scrollView.drawsBackground = NO;
+scrollView.documentView = gridContainer;
 
-for (NSUInteger row = 0; row < ceil((double)[buttons count] / columns); row++) {
-    NSMutableArray *rowViews = [NSMutableArray array];
-    for (NSUInteger col = 0; col < columns; col++) {
-        NSUInteger idx = row * columns + col;
-        if (idx < [buttons count]) {
-            NSButton *btn = buttons[idx];
-            btn.translatesAutoresizingMaskIntoConstraints = NO;
-
-            [btn.heightAnchor constraintEqualToAnchor:btn.widthAnchor multiplier:9.0/16.0].active = YES;
-            [btn.widthAnchor constraintEqualToConstant:thumbWidth].active = YES;
-
-            [rowViews addObject:btn];
-        } else {
-            NSView *empty = [[NSView alloc] init];
-            [empty.widthAnchor constraintEqualToConstant:thumbWidth].active = YES;
-            [empty.heightAnchor constraintEqualToConstant:thumbHeight].active = YES;
-            [rowViews addObject:empty];
-        }
-    }
-    [gridRows addObject:rowViews];
-}
-
-NSGridView *gridView = [NSGridView gridViewWithViews:gridRows];
-gridView.translatesAutoresizingMaskIntoConstraints = NO;
-gridView.rowSpacing = spacing;
-gridView.columnSpacing = spacing;
-
-[content addSubview:gridView];
-
+// gridContainer constraints inside scrollView.contentView
+gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
 [NSLayoutConstraint activateConstraints:@[
-    [gridView.centerXAnchor constraintEqualToAnchor:content.centerXAnchor],
-    [gridView.centerYAnchor constraintEqualToAnchor:content.centerYAnchor]
+    [gridContainer.topAnchor constraintEqualToAnchor:scrollView.contentView.topAnchor],
+    [gridContainer.leadingAnchor constraintEqualToAnchor:scrollView.contentView.leadingAnchor],
+    [gridContainer.trailingAnchor constraintLessThanOrEqualToAnchor:scrollView.contentView.trailingAnchor],
+    [gridContainer.bottomAnchor constraintEqualToAnchor:scrollView.contentView.bottomAnchor],
 ]];
 
-
-//self.statusBar = [NSStatusBar systemStatusBar];
-self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
-
-
-NSImage *icon = [NSImage imageNamed:NSImageNameApplicationIcon];
-//icon.isTemplate = true; // Adapts to dark mode
-self.statusItem.button.image = icon;
-
-NSMenu *menu = [[NSMenu alloc] init];
-
-[menu addItemWithTitle:@"Open UI"
-                action:@selector(showUIWindow)
-         keyEquivalent:@"O"];
-
-[menu addItemWithTitle:@"Quit"
-                action:@selector(quitApp)
-         keyEquivalent:@"q"];
-
-self.statusItem.menu = menu;
+// Max width constraint:
+CGFloat maxWidth = 800.0;  // adjust as needed
+[gridContainer.widthAnchor constraintLessThanOrEqualToConstant:maxWidth].active = YES;
 
 
+// Allow gridContainer to grow/shrink horizontally
+[gridContainer setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+[gridContainer setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+
+
+    [self reloadGrid:nil];
+
+    self.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
+if (@available(macOS 11.0, *)) {
+NSImage *icon = [NSImage imageWithSystemSymbolName:@"play.rectangle" accessibilityDescription:@"Play Display"];
+    
+    // Use text style for automatic scaling
+    NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithTextStyle:NSFontTextStyleBody];
+    NSImage *configuredIcon = [icon imageWithSymbolConfiguration:config];
+    
+    self.statusItem.button.image = configuredIcon;
+    
+    // Let system automatically adapt color based on appearance
+    self.statusItem.button.contentTintColor = nil; // or [NSColor labelColor];
+} else {
+    // Fallback for older macOS versions
+    NSImage *icon = [NSImage imageNamed:NSImageNameApplicationIcon];
+    self.statusItem.button.image = icon;
 }
+
+
+    NSMenu *menu = [[NSMenu alloc] init];
+    [menu addItemWithTitle:@"Open UI" action:@selector(showUIWindow) keyEquivalent:@"O"];
+    [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
+    self.statusItem.menu = menu;
+}
+
+
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     NSLog(@"🚪 App terminating...");
