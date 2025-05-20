@@ -31,7 +31,7 @@ std::string run_command(const std::string& cmd) {
     }
     pclose(pipe);
 
-    // Remove trailing newline if present
+    
     if (!result.empty() && result.back() == '\n') {
         result.pop_back();
     }
@@ -211,6 +211,12 @@ for (NSString *filename in videoFiles) {
 
 - (void)startWallpaperWithPath:(NSString *)videoPath {
     g_videoPath = [videoPath UTF8String];
+    {
+        NSString *videoPathNSString = [NSString stringWithUTF8String:g_videoPath.c_str()];
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setObject:videoPathNSString forKey:@"LastWallpaperPath"];
+        [defaults synchronize];
+    }
 
     std::filesystem::path p(g_videoPath);
     std::string videoName = p.stem().string();
@@ -274,8 +280,8 @@ for (NSString *filename in videoFiles) {
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
-    // Fix width, allow height to change
-    CGFloat fixedWidth = 800;  // your fixed width
+    
+    CGFloat fixedWidth = 800; 
     return NSMakeSize(fixedWidth, proposedFrameSize.height);
 }
 
@@ -314,7 +320,7 @@ for (NSString *filename in videoFiles) {
 
     NSStackView *mainStack = [[NSStackView alloc] init];
     mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    mainStack.distribution = NSStackViewDistributionFill; // scrollView fills remaining space
+    mainStack.distribution = NSStackViewDistributionFill;
 mainStack.alignment = NSLayoutAttributeLeading;
     mainStack.spacing = 12;
     mainStack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -345,7 +351,7 @@ mainStack.alignment = NSLayoutAttributeLeading;
     [mainStack addArrangedSubview:reloadButton];
 [mainStack addArrangedSubview:scrollView];
     
-    // Add scrollView to mainStack or window's contentView
+    
         scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     scrollView.hasVerticalScroller = YES;
     scrollView.hasHorizontalScroller = NO;
@@ -354,22 +360,11 @@ mainStack.alignment = NSLayoutAttributeLeading;
     scrollView.drawsBackground = NO;
 
 
-// ScrollView constraints (if added to window contentView directly)
-// scrollView.translatesAutoresizingMaskIntoConstraints = NO;
-// [NSLayoutConstraint activateConstraints:@[
-//     [scrollView.topAnchor constraintEqualToAnchor:mainStack.topAnchor],
-//     [scrollView.leadingAnchor constraintEqualToAnchor:mainStack.leadingAnchor],
-//     [scrollView.trailingAnchor constraintEqualToAnchor:mainStack.trailingAnchor],
-//     [scrollView.bottomAnchor constraintEqualToAnchor:mainStack.bottomAnchor],
-// ]];
-
-// scrollView properties
 scrollView.hasVerticalScroller = YES;
 scrollView.hasHorizontalScroller = NO;
 scrollView.drawsBackground = NO;
 scrollView.documentView = gridContainer;
 
-// gridContainer constraints inside scrollView.contentView
 gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
 [NSLayoutConstraint activateConstraints:@[
     [gridContainer.topAnchor constraintEqualToAnchor:scrollView.contentView.topAnchor],
@@ -378,12 +373,12 @@ gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
     [gridContainer.bottomAnchor constraintEqualToAnchor:scrollView.contentView.bottomAnchor],
 ]];
 
-// Max width constraint:
-CGFloat maxWidth = 800.0;  // adjust as needed
+
+CGFloat maxWidth = 800.0;
 [gridContainer.widthAnchor constraintLessThanOrEqualToConstant:maxWidth].active = YES;
 
 
-// Allow gridContainer to grow/shrink horizontally
+
 [gridContainer setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
 [gridContainer setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
 
@@ -394,16 +389,16 @@ CGFloat maxWidth = 800.0;  // adjust as needed
 if (@available(macOS 11.0, *)) {
 NSImage *icon = [NSImage imageWithSystemSymbolName:@"play.rectangle" accessibilityDescription:@"Play Display"];
     
-    // Use text style for automatic scaling
+    
     NSImageSymbolConfiguration *config = [NSImageSymbolConfiguration configurationWithTextStyle:NSFontTextStyleBody];
     NSImage *configuredIcon = [icon imageWithSymbolConfiguration:config];
     
     self.statusItem.button.image = configuredIcon;
     
-    // Let system automatically adapt color based on appearance
-    self.statusItem.button.contentTintColor = nil; // or [NSColor labelColor];
+    
+    self.statusItem.button.contentTintColor = nil; 
 } else {
-    // Fallback for older macOS versions
+    
     NSImage *icon = [NSImage imageNamed:NSImageNameApplicationIcon];
     self.statusItem.button.image = icon;
 }
@@ -453,14 +448,19 @@ NSImage *icon = [NSImage imageWithSystemSymbolName:@"play.rectangle" accessibili
 @end
 
 int main(int argc, const char * argv[]) {
-    // Set a universal PATH for all macOS machines
-setenv("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin", 1);
+    setenv("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin", 1);
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
         AppDelegate *delegate = [[AppDelegate alloc] init];
         [app setDelegate:delegate];
+
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        NSString *savedPath = [defaults stringForKey:@"LastWallpaperPath"];
+        if (savedPath && [[NSFileManager defaultManager] fileExistsAtPath:savedPath]) {
+            [delegate startWallpaperWithPath:savedPath];
+        }
         [app run];
     }
 }
