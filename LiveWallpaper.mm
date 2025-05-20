@@ -8,15 +8,47 @@
 #include <filesystem>
 #include <cstdlib>
 #include <string>
+#include <memory>
+#include <stdexcept>
+#include <array>
+
 
 namespace fs = std::filesystem;
 
 std::string g_videoPath;
 std::string frame = "";
 bool reload = true;
+
+
+std::string run_command(const std::string& cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        result += buffer.data();
+    }
+    pclose(pipe);
+
+    // Remove trailing newline if present
+    if (!result.empty() && result.back() == '\n') {
+        result.pop_back();
+    }
+
+    return result;
+}
+
 std::string extract_middle_frame(const std::string& videoPath, const std::string& outputImage) {
-    std::string ffmpegCmd = "ffmpeg -y -i \"" + videoPath + "\" -ss 00:00:05 -frames:v 1 \"" + outputImage + "\"";
+    std::string ffmpegPath = run_command("which ffmpeg");
+    if (ffmpegPath.empty() || !fs::exists(ffmpegPath)) {
+        std::cerr << "ffmpeg not found in PATH\n";
+        return "";
+    }
+
+    std::string ffmpegCmd = "\"" + ffmpegPath + "\" -y -i \"" + videoPath + "\" -ss 00:00:05 -frames:v 1 \"" + outputImage + "\"";
     int ret = std::system(ffmpegCmd.c_str());
+
     return (ret == 0 && fs::exists(outputImage)) ? outputImage : "";
 }
 
@@ -421,6 +453,8 @@ NSImage *icon = [NSImage imageWithSystemSymbolName:@"play.rectangle" accessibili
 @end
 
 int main(int argc, const char * argv[]) {
+    // Set a universal PATH for all macOS machines
+setenv("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin", 1);
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
