@@ -1,3 +1,4 @@
+#import <ApplicationServices/ApplicationServices.h>
 #import <Cocoa/Cocoa.h>
 #import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/QuartzCore.h>
@@ -110,6 +111,20 @@ NSView *content;
 
 
 
+- (void)checkAndPromptPermissions {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if ([defaults boolForKey:@"AccessibilityPermissionChecked"]) return;
+    [defaults setBool:YES forKey:@"AccessibilityPermissionChecked"];
+    [defaults synchronize];
+
+
+    if (!AXIsProcessTrusted()) {
+        NSDictionary *options = @{ (__bridge id)kAXTrustedCheckOptionPrompt: @YES };
+        AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
+    }
+}
+
+
 
 - (void)ReloadContent {
     if (buttons.count > 0) {
@@ -210,6 +225,25 @@ for (NSString *filename in videoFiles) {
 
 
 - (void)startWallpaperWithPath:(NSString *)videoPath {
+    [self checkAndPromptPermissions];
+    {
+            if (self.player) {
+        [self.player pause];
+        self.player = nil;
+    }
+
+    if (self.window) {
+        // Remove all sublayers from contentView
+        [self.window.contentView.layer.sublayers makeObjectsPerformSelector:@selector(removeFromSuperlayer)];
+        [self.window orderOut:nil];
+        self.window = nil;
+    }
+
+    // Remove previous AVPlayerItemDidPlayToEndTimeNotification observers
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:AVPlayerItemDidPlayToEndTimeNotification
+                                                  object:nil];
+    }
     g_videoPath = [videoPath UTF8String];
     {
         NSString *videoPathNSString = [NSString stringWithUTF8String:g_videoPath.c_str()];
@@ -226,7 +260,12 @@ for (NSString *filename in videoFiles) {
         return;
     }
 
-    std::string tempImage = "/tmp/" + videoName + ".jpg";
+    NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+NSString *customDir = [appSupportDir stringByAppendingPathComponent:@"Livewall"];
+[[NSFileManager defaultManager] createDirectoryAtPath:customDir withIntermediateDirectories:YES attributes:nil error:nil];
+
+std::string tempImage = std::string([[customDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.jpg", videoName.c_str()]] UTF8String]);
+
     frame = extract_middle_frame(g_videoPath, tempImage);
     if (frame.empty()) {
         std::cerr << "Failed to extract frame from video.\n";
@@ -270,6 +309,9 @@ for (NSString *filename in videoFiles) {
         [self.player seekToTime:kCMTimeZero];
         [self.player play];
     }];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+    set_wallpaper_all_spaces(frame);
+});
 }
 
 - (void)handleButtonClick:(NSButton *)sender {
