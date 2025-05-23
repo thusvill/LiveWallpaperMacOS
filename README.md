@@ -20,10 +20,20 @@ This application currently supported for `.mp4` and `.mov` extensions.
 
 I hope to make user able to define video paths and file formats 🙂
 
-## Installation
-You can just download the binary from releases or compile this using cmake
+## Guide for DMG Installation
+Create a folder call "Livewall" in `/Users/YOUR_USERNAME/` and place some mp4 or mov files in it.
+> [!NOTE]
+> no dots should be contained on the file name exept the dot for extension
+> 
+> ## Eg-:
+> 
+>  - file.1920x1080.mp4 ❌ ('.'s > 1)
+> 
+>  - file-1920x1080.mp4 ✅ ('.'s = 1)
+ 
+https://github.com/user-attachments/assets/12ba8176-7465-4a5d-ba27-2ada8820f473
 
-
+## Installation(Compile from source)
 These dependencies needed to compile(don't need for binary)
 - macOS 12 or later (macOS 15 compatible)
 - git for clone repo (or download directly)
