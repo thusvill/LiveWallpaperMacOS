@@ -6,6 +6,7 @@ Currently it doesn't have a Good looking UI, but it gets the work done 🙂
 
 
 > [!IMPORTANT]
+> ## Fix “LiveWallpaper.app” is corrupted and cannot be opened. It is recommended that you move the object to the recycle bin.
 > After drop app in to Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
 > 
 > This will solve the Damage-File popup
