@@ -15,6 +15,14 @@ I hope to make user able to define video paths and file formats 🙂
 ## Installation
 You can just download the binary from releases or compile this using cmake
 
+> [!IMPORTANT]
+> You have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
+> 
+> This will solve the Damage-File popup
+> 
+> `xattr -d com.apple.quarantine` 
+
+
 These dependencies needed to compile(don't need for binary)
 - macOS 12 or later (macOS 15 compatible)
 - git for clone repo (or download directly)
