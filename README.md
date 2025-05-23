@@ -5,6 +5,13 @@ This is a open-source live wallpaper applicationn for MacOS 15+
 Currently it doesn't have a Good looking UI, but it gets the work done 🙂
 
 
+> [!IMPORTANT]
+> After drop app in to Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
+> 
+> This will solve the Damage-File popup
+> 
+> `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 
+
 ## Befor you run the programme
 Pleas make a folde on your `$HOME` directory called `Livewall` and place some video files in it.
 
@@ -14,13 +21,6 @@ I hope to make user able to define video paths and file formats 🙂
 
 ## Installation
 You can just download the binary from releases or compile this using cmake
-
-> [!IMPORTANT]
-> After drop app in to Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
-> 
-> This will solve the Damage-File popup
-> 
-> `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 
 
 
 These dependencies needed to compile(don't need for binary)
