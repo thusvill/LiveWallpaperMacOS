@@ -12,6 +12,20 @@ This application currently supported for `.mp4` and `.mov` extensions.
 
 I hope to make user able to define video paths and file formats 🙂
 
+## Installation
+You can just download the binary from releases or compile this using cmake
+
+These dependencies needed to compile(don't need for binary)
+- macOS 12 or later (macOS 15 compatible)
+- git for clone repo (or download directly)
+- Xcode Command Line Tools
+  Install with:
+    `xcode-select --install`
+- Cmake for compile
+
+## Compilation 
+Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)`
+
 ## Gallery
 > Adaptive tray icon
 > 
