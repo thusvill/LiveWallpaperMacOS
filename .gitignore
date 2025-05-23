@@ -2,3 +2,5 @@ LiveWallpaperApp
 build
 build/**
 CMakeLists.txt
+build-xcode
+build-xcode/**
