@@ -1,6 +1,6 @@
 # Live Wallpaper for MacOS
 
-This is a open-source live wallpaper applicationn for mac os.
+This is a open-source live wallpaper applicationn for MacOS 15+
 
 Currently it doesn't have a Good looking UI, but it gets the work done 🙂
 
