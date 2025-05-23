@@ -16,11 +16,11 @@ I hope to make user able to define video paths and file formats 🙂
 You can just download the binary from releases or compile this using cmake
 
 > [!IMPORTANT]
-> You have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
+> After drop app in to Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
 > 
 > This will solve the Damage-File popup
 > 
-> `xattr -d com.apple.quarantine /path/to/LiveWallpaper.app` 
+> `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 
 
 
 These dependencies needed to compile(don't need for binary)
