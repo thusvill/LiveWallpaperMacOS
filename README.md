@@ -20,7 +20,7 @@ You can just download the binary from releases or compile this using cmake
 > 
 > This will solve the Damage-File popup
 > 
-> `xattr -d com.apple.quarantine` 
+> `xattr -d com.apple.quarantine /path/to/LiveWallpaper.app` 
 
 
 These dependencies needed to compile(don't need for binary)
