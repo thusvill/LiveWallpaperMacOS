@@ -232,41 +232,34 @@ NSView *content;
     NSRange range = NSMakeRange([[self.logTextView string] length], 0);
     [self.logTextView scrollRangeToVisible:range];
 }
-- (void)optimizeLiveWallpapersToHEVC {
+
+- (void)optimizeAllVideosInFolder {
     NSString *folderPath = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
-    NSFileManager *fm = [NSFileManager defaultManager];
-    NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:folderPath error:nil];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSArray *videoFiles = [fileManager contentsOfDirectoryAtPath:folderPath error:nil];
 
-    NSMutableArray<NSString *> *videoFiles = [NSMutableArray array];
-    for (NSString *file in files) {
-        if ([file.pathExtension.lowercaseString isEqualToString:@"mp4"] ||
-            [file.pathExtension.lowercaseString isEqualToString:@"mov"]) {
-            [videoFiles addObject:file];
-        }
-    }
+    // Support both .mp4 and .mov
+    NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(NSString *filename, NSDictionary *bindings) {
+        NSString *lower = filename.lowercaseString;
+        return [lower hasSuffix:@".mp4"] || [lower hasSuffix:@".mov"];
+    }];
+    videoFiles = [videoFiles filteredArrayUsingPredicate:predicate];
 
-    if (videoFiles.count == 0) {
-        NSLog(@"No videos to optimize.");
-        return;
-    }
-
-    
+    // Show the progress window on the main thread before starting conversion
     dispatch_async(dispatch_get_main_queue(), ^{
         [self showProgressWindowWithMax:videoFiles.count];
     });
 
-    
-    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
-        NSInteger currentIndex = 0;
+    __block NSInteger currentIndex = 0;
 
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         for (NSString *file in videoFiles) {
             currentIndex++;
-
             NSString *fullPath = [folderPath stringByAppendingPathComponent:file];
             NSURL *fileURL = [NSURL fileURLWithPath:fullPath];
             AVAsset *asset = [AVAsset assetWithURL:fileURL];
-
             BOOL isHEVC = NO;
+
             for (AVAssetTrack *track in [asset tracksWithMediaType:AVMediaTypeVideo]) {
                 CFArrayRef formatDescriptions = (__bridge CFArrayRef)track.formatDescriptions;
                 for (CFIndex i = 0; i < CFArrayGetCount(formatDescriptions); i++) {
@@ -286,64 +279,76 @@ NSView *content;
             });
 
             if (isHEVC) {
-                // Skip conversion but update UI progress (main thread)
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [self.progressLabel setStringValue:[NSString stringWithFormat:@"Skipped (already HEVC): %@", file]];
                     [self.progressBar setDoubleValue:currentIndex];
+                    [self appendLogMessage:[NSString stringWithFormat:@"Skipped (already HEVC): %@", file]];
                 });
                 continue;
             }
 
-            NSURL *tempURL = [NSURL fileURLWithPath:[fullPath stringByAppendingString:@".hevc.mp4"]];
-            AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset
-                                                                                    presetName:AVAssetExportPresetHEVCHighestQuality];
+            // Safe temp file path with same extension as original
+            NSString *tempName = [NSString stringWithFormat:@"%@.tmp.mp4", [[NSUUID UUID] UUIDString]];
+            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:tempName];
+            NSURL *tempURL = [NSURL fileURLWithPath:tempPath];
+
+            AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetHEVCHighestQuality];
             exportSession.outputURL = tempURL;
             exportSession.outputFileType = AVFileTypeMPEG4;
             exportSession.shouldOptimizeForNetworkUse = YES;
-
             dispatch_semaphore_t sema = dispatch_semaphore_create(0);
 
             [exportSession exportAsynchronouslyWithCompletionHandler:^{
-    if (exportSession.status == AVAssetExportSessionStatusCompleted) {
-        [fm removeItemAtURL:fileURL error:nil];
-        [fm moveItemAtURL:tempURL toURL:fileURL error:nil];
-        NSLog(@"✅ Converted: %@", file);
-        [self appendLogMessage:[NSString stringWithFormat:@"✅ Converted: %@", file]];
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.progressLabel setStringValue:[NSString stringWithFormat:@"Converted: %@", file]];
-        });
-    } else {
-        NSLog(@"❌ Failed: %@ (%@)", file, exportSession.error.localizedDescription);
-        [fm removeItemAtURL:tempURL error:nil];
-        [self appendLogMessage:[NSString stringWithFormat:@"❌ Failed: %@ (%@)", file, exportSession.error.localizedDescription]];
-
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.progressLabel setStringValue:[NSString stringWithFormat:@"Failed: %@", file]];
-        });
-    }
-    dispatch_semaphore_signal(sema);
-}];
-
-            // Wait for export to finish (background queue only)
+                NSFileManager *fm = [NSFileManager defaultManager];
+                if (exportSession.status == AVAssetExportSessionStatusCompleted) {
+                    NSError *replaceError = nil;
+                    // Remove original
+                    if ([fm fileExistsAtPath:fileURL.path]) {
+                        if (![fm removeItemAtURL:fileURL error:&replaceError]) {
+                            NSLog(@"❌ Remove failed: %@", replaceError.localizedDescription);
+                        }
+                    }
+                    // Move temp to original
+                    if (![fm moveItemAtURL:tempURL toURL:fileURL error:&replaceError]) {
+                        NSLog(@"❌ Replace failed: %@", replaceError.localizedDescription);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self appendLogMessage:[NSString stringWithFormat:@"❌ Replace failed: %@ (%@)", file, replaceError.localizedDescription]];
+                        });
+                    } else {
+                        NSLog(@"✅ Converted: %@", file);
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            [self appendLogMessage:[NSString stringWithFormat:@"✅ Converted: %@", file]];
+                        });
+                    }
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self.progressLabel setStringValue:[NSString stringWithFormat:@"Converted: %@", file]];
+                        [self.progressBar setDoubleValue:currentIndex];
+                    });
+                } else {
+                    NSLog(@"❌ Export failed for %@ (%@)", file, exportSession.error.localizedDescription);
+                    [fm removeItemAtURL:tempURL error:nil];
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self appendLogMessage:[NSString stringWithFormat:@"❌ Export failed: %@ (%@)", file, exportSession.error.localizedDescription]];
+                        [self.progressLabel setStringValue:[NSString stringWithFormat:@"Failed: %@", file]];
+                        [self.progressBar setDoubleValue:currentIndex];
+                    });
+                }
+                dispatch_semaphore_signal(sema);
+            }];
             dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-
-            // Update progress after conversion (main thread)
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self.progressBar setDoubleValue:currentIndex];
-                [self.progressLabel setStringValue:[NSString stringWithFormat:@"Optimizing %ld of %ld", (long)currentIndex, (long)videoFiles.count]];
-            });
         }
 
-        // Close progress window when done (main thread)
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self.progressWindow close];
-            self.progressWindow = nil;
-            self.progressLabel = nil;
-            self.progressBar = nil;
+            [self.progressLabel setStringValue:@"All conversions done!"];
+            [self.progressBar setDoubleValue:videoFiles.count];
+            [self appendLogMessage:@"All conversions done!"];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self.progressWindow orderOut:nil];
+            });
         });
     });
 }
+
 
 - (void)checkAndPromptPermissions {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -418,7 +423,7 @@ NSView *content;
     }
 }
 - (void)convertCodec:(id)sender {
-     [self optimizeLiveWallpapersToHEVC];
+     [self optimizeAllVideosInFolder];
 }
 
 - (void)reloadGrid:(id)sender {
