@@ -1,27 +1,19 @@
 # Live Wallpaper for MacOS
 
-This is a open-source live wallpaper applicationn for MacOS 15+
+This is an open-source live wallpaper applicationn for MacOS 15+
 
-Currently it doesn't have a Good looking UI, but it gets the work done 🙂
-
+## Guide for DMG Installation
 
 > [!IMPORTANT]
 > ## Fix “LiveWallpaper.app” is corrupted and cannot be opened. It is recommended that you move the object to the recycle bin.
-> After drop app in to Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
+> After you install the app in Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
 > 
-> This will solve the Damage-File popup
+> This will solve the occupation issue
 > 
 > `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 
 
-## Befor you run the programme
-Pleas make a folde on your `$HOME` directory called `Livewall` and place some video files in it.
+Click the OpenInFinder button and it'll open a folder, you can place wallpapers in it.
 
-This application currently supported for `.mp4` and `.mov` extensions.
-
-I hope to make user able to define video paths and file formats 🙂
-
-## Guide for DMG Installation
-Create a folder call "Livewall" in `/Users/YOUR_USERNAME/` and place some mp4 or mov files in it.
 > [!NOTE]
 > no dots should be contained on the file name exept the dot for extension
 > 
@@ -30,19 +22,18 @@ Create a folder call "Livewall" in `/Users/YOUR_USERNAME/` and place some mp4 or
 >  - file.1920x1080.mp4 ❌ ('.'s > 1)
 > 
 >  - file-1920x1080.mp4 ✅ ('.'s = 1)
+
+> [!NOTE]
+> Currently support for `.mp4` and `.mov`
  
 https://github.com/user-attachments/assets/12ba8176-7465-4a5d-ba27-2ada8820f473
 
 ## Installation(Compile from source)
-These dependencies needed to compile(don't need for binary)
-- macOS 12 or later (macOS 15 compatible)
-- git for clone repo (or download directly)
-- Xcode Command Line Tools
-  Install with:
-    `xcode-select --install`
-- Cmake for compile
-
-## Compilation 
+- macOS 15+
+- git
+- Xcode
+- Cmake
+- 
 Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)`
 
 ## Gallery
