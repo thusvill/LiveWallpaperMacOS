@@ -127,6 +127,7 @@ void handleSpaceChange(NSNotification *note) {
     }
 }
 
+
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 @property(strong) NSWindow *window;
 @property(strong) NSWindow *blurWindow;
@@ -145,6 +146,27 @@ NSScreen *mainScreen = NULL;
 NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
 NSView *content;
 
+- (void)pauseVideoPlayback {
+    if ([self.player rate] != 0) {
+        [self.player pause];
+    }
+}
+
+- (void)resumeVideoPlayback {
+    if ([self.player rate] == 0) {
+        [self.player play];
+    }
+}
+
+- (void)screenLocked:(NSNotification *)notification {
+    NSLog(@"🔒 Screen locked");
+    [self pauseVideoPlayback];
+}
+
+- (void)screenUnlocked:(NSNotification *)notification {
+    NSLog(@"🔓 Screen unlocked");
+    [self resumeVideoPlayback];
+    }
 
 
 - (void)showProgressWindowWithMax:(NSInteger)maxCount {
@@ -592,6 +614,8 @@ NSView *content;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
+BOOL accessibilityEnabled = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
     [[[NSWorkspace sharedWorkspace] notificationCenter]
         addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
                     object:nil
@@ -599,6 +623,18 @@ NSView *content;
                 usingBlock:^(NSNotification *_Nonnull note) {
                   handleSpaceChange(note);
                 }];
+    
+    [[[NSWorkspace sharedWorkspace] notificationCenter]
+    addObserver:self
+       selector:@selector(screenLocked:)
+           name:NSWorkspaceSessionDidResignActiveNotification
+         object:nil];
+
+[[[NSWorkspace sharedWorkspace] notificationCenter]
+    addObserver:self
+       selector:@selector(screenUnlocked:)
+           name:NSWorkspaceSessionDidBecomeActiveNotification
+         object:nil];
 
     NSRect frame = NSMakeRect(0, 0, 800, 600);
     self.blurWindow =
