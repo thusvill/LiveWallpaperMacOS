@@ -4,6 +4,7 @@
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
+#import <ServiceManagement/SMAppService.h>
 
 
 #include <array>
@@ -145,6 +146,40 @@ NSStackView *gridContainer = [[NSStackView alloc] init];
 NSScreen *mainScreen = NULL;
 NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
 NSView *content;
+
+- (BOOL)isFirstLaunch {
+    NSString *const kFirstLaunchKey = @"HasLaunchedOnce";
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kFirstLaunchKey]) {
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kFirstLaunchKey];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        return YES;
+    }
+    return NO;
+}
+
+
+- (void)promptForLoginItem {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Launch at Login"];
+    [alert setInformativeText:@"Would you like to launch this app automatically when you log in?"];
+    [alert addButtonWithTitle:@"Yes"];
+    [alert addButtonWithTitle:@"No"];
+    [alert setAlertStyle:NSAlertStyleInformational];
+
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+
+            SMAppService *service = [SMAppService loginItemServiceWithIdentifier:[[NSBundle mainBundle] bundleIdentifier]];
+            NSError *error = nil;
+            [service registerAndReturnError:&error];
+            if (error) {
+                NSLog(@"Error adding to login items: %@", error.localizedDescription);
+            }
+        }
+    }];
+}
+
+
 
 - (void)pauseVideoPlayback {
     if ([self.player rate] != 0) {
@@ -619,6 +654,9 @@ NSView *content;
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+    if ([self isFirstLaunch]) {
+        [self promptForLoginItem];
+    }
     NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
 BOOL accessibilityEnabled = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
     [[[NSWorkspace sharedWorkspace] notificationCenter]
