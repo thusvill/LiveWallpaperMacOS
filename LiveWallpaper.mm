@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 
+
 #include <array>
 #include <cstdlib>
 #include <filesystem>
@@ -38,25 +39,49 @@ std::string run_command(const std::string &cmd) {
     return result;
 }
 
-std::string extract_middle_frame(const std::string &videoPath,
-                                 const std::string &outputImage) {
-    
-NSString *bundlePath = [[NSBundle mainBundle] bundlePath];
-NSString *ffmpegPathNSString = [bundlePath stringByAppendingPathComponent:@"Contents/Resources/ffmpeg"];
-std::string ffmpegPath = std::string([ffmpegPathNSString UTF8String]);
+std::string extract_frame_avfoundation(const std::string& videoPath, const std::string& outputImage, int seconds) {
+    @autoreleasepool {
+        NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:videoPath.c_str()]];
+        AVAsset *asset = [AVAsset assetWithURL:url];
+        AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+        imageGenerator.appliesPreferredTrackTransform = YES;
 
-if (!fs::exists(ffmpegPath)) {
-    std::cerr << "ffmpeg binary not found at " << ffmpegPath << "\n";
-    return "";
+        CMTime time = CMTimeMakeWithSeconds(seconds, asset.duration.timescale);
+        NSError *error = nil;
+        CMTime actualTime;
+
+        CGImageRef imageRef = [imageGenerator copyCGImageAtTime:time actualTime:&actualTime error:&error];
+        if (!imageRef) {
+            NSLog(@"Error extracting image: %@", error);
+            return "";
+        }
+
+        NSString *outPath = [NSString stringWithUTF8String:outputImage.c_str()];
+        NSURL *outURL = [NSURL fileURLWithPath:outPath];
+
+        CGImageDestinationRef destination = CGImageDestinationCreateWithURL((__bridge CFURLRef)outURL, kUTTypePNG, 1, NULL);
+        if (!destination) {
+            NSLog(@"Could not create image destination");
+            CGImageRelease(imageRef);
+            return "";
+        }
+
+        CGImageDestinationAddImage(destination, imageRef, nil);
+        if (!CGImageDestinationFinalize(destination)) {
+            NSLog(@"Failed to write image");
+            CFRelease(destination);
+            CGImageRelease(imageRef);
+            return "";
+        }
+
+        CFRelease(destination);
+        CGImageRelease(imageRef);
+
+        return outputImage;
+    }
 }
 
-    std::string ffmpegCmd = "\"" + ffmpegPath + "\" -y -i \"" + videoPath +
-                            "\" -ss 00:00:05 -frames:v 1 \"" + outputImage +
-                            "\"";
-    int ret = std::system(ffmpegCmd.c_str());
 
-    return (ret == 0 && fs::exists(outputImage)) ? outputImage : "";
-}
 
 bool set_wallpaper_all_spaces(const std::string &imagePath) {
     // std::string cmd = "automator -i \"" + imagePath + "\"
@@ -291,7 +316,7 @@ NSView *content;
                                                             videoName.c_str()]]
         UTF8String]);
 
-    frame = extract_middle_frame(g_videoPath, tempImage);
+    frame = extract_frame_avfoundation(g_videoPath, tempImage, 5);
     if (frame.empty()) {
         std::cerr << "Failed to extract frame from video.\n";
         return;
