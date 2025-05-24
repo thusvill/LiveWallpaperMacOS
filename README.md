@@ -25,8 +25,10 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 
 > [!NOTE]
 > Currently support for `.mp4` and `.mov`
- 
-https://github.com/user-attachments/assets/12ba8176-7465-4a5d-ba27-2ada8820f473
+
+> https://github.com/user-attachments/assets/3d82e07d-b6b9-4a7d-b6de-5dd05dff3128
+
+
 
 ## Installation(Compile from source)
 - macOS 15+
