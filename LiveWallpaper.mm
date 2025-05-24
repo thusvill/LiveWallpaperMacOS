@@ -132,6 +132,10 @@ void handleSpaceChange(NSNotification *note) {
 @property(strong) NSWindow *blurWindow;
 @property(strong) NSStatusItem *statusItem;
 @property(strong) AVPlayer *player;
+@property (strong) NSWindow *progressWindow;
+@property (strong) NSTextField *progressLabel;
+@property (strong) NSProgressIndicator *progressBar;
+@property (strong) NSTextView *logTextView;
 @end
 
 @implementation AppDelegate
@@ -140,6 +144,184 @@ NSStackView *gridContainer = [[NSStackView alloc] init];
 NSScreen *mainScreen = NULL;
 NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
 NSView *content;
+
+
+
+- (void)showProgressWindowWithMax:(NSInteger)maxCount {
+    
+    if (!self.progressWindow) {
+        NSRect frame = NSMakeRect(0, 0, 480, 320);
+        self.progressWindow = [[NSWindow alloc] initWithContentRect:frame
+                                                          styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                                                            backing:NSBackingStoreBuffered
+                                                              defer:NO];
+        [self.progressWindow setTitle:@"Optimizing Live Wallpapers"];
+        [self.progressWindow center];
+
+        NSView *contentView = self.progressWindow.contentView;
+
+        // Progress Label
+        self.progressLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 280, 440, 20)];
+        [self.progressLabel setEditable:NO];
+        [self.progressLabel setBezeled:NO];
+        [self.progressLabel setDrawsBackground:NO];
+        [self.progressLabel setStringValue:@"Starting..."];
+        [contentView addSubview:self.progressLabel];
+
+        // Progress Bar
+        self.progressBar = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(20, 250, 440, 20)];
+        [self.progressBar setIndeterminate:NO];
+        [self.progressBar setMinValue:0];
+        [self.progressBar setMaxValue:maxCount];
+        [self.progressBar setDoubleValue:0];
+        [self.progressBar setUsesThreadedAnimation:YES];
+        [contentView addSubview:self.progressBar];
+
+        // Scrollable TextView for logs
+        NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(20, 20, 440, 210)];
+        [scrollView setBorderType:NSBezelBorder];
+        [scrollView setHasVerticalScroller:YES];
+        [scrollView setHasHorizontalScroller:NO];
+        [scrollView setAutohidesScrollers:YES];
+
+        NSTextView *textView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 440, 210)];
+        [textView setEditable:NO];
+        [textView setSelectable:YES];
+        [textView setFont:[NSFont userFixedPitchFontOfSize:12]];
+        [textView setBackgroundColor:[NSColor blackColor]];
+        [textView setTextColor:[NSColor greenColor]];
+        [textView setString:@"Log:\n"];
+
+        [scrollView setDocumentView:textView];
+        [contentView addSubview:scrollView];
+
+        self.logTextView = textView;
+    }
+
+    [self.progressWindow makeKeyAndOrderFront:nil];
+}
+- (void)appendLogMessage:(NSString *)text {
+    if (!self.logTextView) return;
+
+    NSDictionary *attrs = @{ NSForegroundColorAttributeName : [NSColor greenColor] };
+    NSAttributedString *attrText = [[NSAttributedString alloc] initWithString:[text stringByAppendingString:@"\n"] attributes:attrs];
+    [[self.logTextView textStorage] appendAttributedString:attrText];
+
+    NSRange range = NSMakeRange([[self.logTextView string] length], 0);
+    [self.logTextView scrollRangeToVisible:range];
+}
+- (void)optimizeLiveWallpapersToHEVC {
+    NSString *folderPath = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:folderPath error:nil];
+
+    NSMutableArray<NSString *> *videoFiles = [NSMutableArray array];
+    for (NSString *file in files) {
+        if ([file.pathExtension.lowercaseString isEqualToString:@"mp4"] ||
+            [file.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+            [videoFiles addObject:file];
+        }
+    }
+
+    if (videoFiles.count == 0) {
+        NSLog(@"No videos to optimize.");
+        return;
+    }
+
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self showProgressWindowWithMax:videoFiles.count];
+    });
+
+    
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSInteger currentIndex = 0;
+
+        for (NSString *file in videoFiles) {
+            currentIndex++;
+
+            NSString *fullPath = [folderPath stringByAppendingPathComponent:file];
+            NSURL *fileURL = [NSURL fileURLWithPath:fullPath];
+            AVAsset *asset = [AVAsset assetWithURL:fileURL];
+
+            BOOL isHEVC = NO;
+            for (AVAssetTrack *track in [asset tracksWithMediaType:AVMediaTypeVideo]) {
+                CFArrayRef formatDescriptions = (__bridge CFArrayRef)track.formatDescriptions;
+                for (CFIndex i = 0; i < CFArrayGetCount(formatDescriptions); i++) {
+                    CMFormatDescriptionRef fmt = (CMFormatDescriptionRef)CFArrayGetValueAtIndex(formatDescriptions, i);
+                    FourCharCode codec = CMFormatDescriptionGetMediaSubType(fmt);
+                    if (codec == kCMVideoCodecType_HEVC) {
+                        isHEVC = YES;
+                        break;
+                    }
+                }
+                if (isHEVC) break;
+            }
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.progressLabel setStringValue:[NSString stringWithFormat:@"Processing: %@", file]];
+                [self.progressBar setDoubleValue:currentIndex - 1];
+            });
+
+            if (isHEVC) {
+                // Skip conversion but update UI progress (main thread)
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [self.progressLabel setStringValue:[NSString stringWithFormat:@"Skipped (already HEVC): %@", file]];
+                    [self.progressBar setDoubleValue:currentIndex];
+                });
+                continue;
+            }
+
+            NSURL *tempURL = [NSURL fileURLWithPath:[fullPath stringByAppendingString:@".hevc.mp4"]];
+            AVAssetExportSession *exportSession = [[AVAssetExportSession alloc] initWithAsset:asset
+                                                                                    presetName:AVAssetExportPresetHEVCHighestQuality];
+            exportSession.outputURL = tempURL;
+            exportSession.outputFileType = AVFileTypeMPEG4;
+            exportSession.shouldOptimizeForNetworkUse = YES;
+
+            dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+
+            [exportSession exportAsynchronouslyWithCompletionHandler:^{
+    if (exportSession.status == AVAssetExportSessionStatusCompleted) {
+        [fm removeItemAtURL:fileURL error:nil];
+        [fm moveItemAtURL:tempURL toURL:fileURL error:nil];
+        NSLog(@"✅ Converted: %@", file);
+        [self appendLogMessage:[NSString stringWithFormat:@"✅ Converted: %@", file]];
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.progressLabel setStringValue:[NSString stringWithFormat:@"Converted: %@", file]];
+        });
+    } else {
+        NSLog(@"❌ Failed: %@ (%@)", file, exportSession.error.localizedDescription);
+        [fm removeItemAtURL:tempURL error:nil];
+        [self appendLogMessage:[NSString stringWithFormat:@"❌ Failed: %@ (%@)", file, exportSession.error.localizedDescription]];
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.progressLabel setStringValue:[NSString stringWithFormat:@"Failed: %@", file]];
+        });
+    }
+    dispatch_semaphore_signal(sema);
+}];
+
+            // Wait for export to finish (background queue only)
+            dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+
+            // Update progress after conversion (main thread)
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.progressBar setDoubleValue:currentIndex];
+                [self.progressLabel setStringValue:[NSString stringWithFormat:@"Optimizing %ld of %ld", (long)currentIndex, (long)videoFiles.count]];
+            });
+        }
+
+        // Close progress window when done (main thread)
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.progressWindow close];
+            self.progressWindow = nil;
+            self.progressLabel = nil;
+            self.progressBar = nil;
+        });
+    });
+}
 
 - (void)checkAndPromptPermissions {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -156,6 +338,7 @@ NSView *content;
 }
 
 - (void)ReloadContent {
+   
     if (buttons.count > 0) {
         [buttons removeAllObjects];
     }
@@ -211,6 +394,9 @@ NSView *content;
         btn.tag = [videoFiles indexOfObject:filename];
         [buttons addObject:btn];
     }
+}
+- (void)convertCodec:(id)sender {
+     [self optimizeLiveWallpapersToHEVC];
 }
 
 - (void)reloadGrid:(id)sender {
@@ -473,6 +659,15 @@ NSButton *reloadButton = [[NSButton alloc] initWithFrame:NSZeroRect];
 [reloadButton setTarget:self];
 [reloadButton setAction:@selector(reloadGrid:)];
 
+NSButton *codecButton = [[NSButton alloc] initWithFrame:NSZeroRect];
+[codecButton setTitle:@"Optimize Codecs"];
+[codecButton setToolTip:@"This will optimize energy usage by converting videos to HEVC Codec"];
+[codecButton setBezelStyle:NSBezelStyleRounded];
+[codecButton setTarget:self];
+[codecButton setAction:@selector(convertCodec:)];
+
+
+
 
 NSButton *openFinderButton = [[NSButton alloc] initWithFrame:NSZeroRect];
 [openFinderButton setTitle:@"Open in Finder"];
@@ -483,6 +678,7 @@ NSButton *openFinderButton = [[NSButton alloc] initWithFrame:NSZeroRect];
 
 [buttonStack addArrangedSubview:reloadButton];
 [buttonStack addArrangedSubview:openFinderButton];
+[buttonStack addArrangedSubview:codecButton];
 
 
 [mainStack addArrangedSubview:buttonStack];
