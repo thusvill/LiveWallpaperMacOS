@@ -1,3 +1,21 @@
+/*
+ * This file is part of RollPlay – LiveWallpaper App for macOS.
+ * Copyright (C) 2025 Bios thusvill
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #import <AVFoundation/AVFoundation.h>
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
@@ -130,14 +148,20 @@ void handleSpaceChange(NSNotification *note) {
 
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
-@property(strong) NSWindow *window;
+//@property(strong) NSWindow *window;
+
+@property (nonatomic, strong) NSMutableArray<NSWindow *> *wallpaperWindows;
+@property (nonatomic, strong) NSMutableArray<AVPlayerLayer *> *playerLayers;
+@property (nonatomic, strong) NSMutableArray<AVPlayer *> *players;
+
 @property(strong) NSWindow *blurWindow;
 @property(strong) NSStatusItem *statusItem;
-@property(strong) AVPlayer *player;
+//@property(strong) AVPlayer *player;
 @property (strong) NSWindow *progressWindow;
 @property (strong) NSTextField *progressLabel;
 @property (strong) NSProgressIndicator *progressBar;
 @property (strong) NSTextView *logTextView;
+@property (strong) NSWindow *settingsWindow;
 @end
 
 @implementation AppDelegate
@@ -166,7 +190,7 @@ NSView *content;
     [alert addButtonWithTitle:@"No"];
     [alert setAlertStyle:NSAlertStyleInformational];
 
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+    [alert beginSheetModalForWindow:self.wallpaperWindows.firstObject completionHandler:^(NSModalResponse returnCode) {
         if (returnCode == NSAlertFirstButtonReturn) {
 
             SMAppService *service = [SMAppService loginItemServiceWithIdentifier:[[NSBundle mainBundle] bundleIdentifier]];
@@ -180,16 +204,19 @@ NSView *content;
 }
 
 
-
 - (void)pauseVideoPlayback {
-    if ([self.player rate] != 0) {
-        [self.player pause];
+    for (AVPlayer *player in self.players) {
+        if (player.rate != 0) {
+            [player pause];
+        }
     }
 }
 
 - (void)resumeVideoPlayback {
-    if ([self.player rate] == 0) {
-        [self.player play];
+    for (AVPlayer *player in self.players) {
+        if (player.rate == 0) {
+            [player play];
+        }
     }
 }
 
@@ -273,7 +300,6 @@ NSView *content;
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSArray *videoFiles = [fileManager contentsOfDirectoryAtPath:folderPath error:nil];
 
-    // Support both .mp4 and .mov
     NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(NSString *filename, NSDictionary *bindings) {
         NSString *lower = filename.lowercaseString;
         return [lower hasSuffix:@".mp4"] || [lower hasSuffix:@".mov"];
@@ -511,35 +537,22 @@ NSView *content;
 }
 
 - (void)startWallpaperWithPath:(NSString *)videoPath {
-    [self checkAndPromptPermissions];
-    {
-        if (self.player) {
-            [self.player pause];
-            self.player = nil;
-        }
+    
 
-        if (self.window) {
-            // Remove all sublayers from contentView
-            [self.window.contentView.layer.sublayers
-                makeObjectsPerformSelector:@selector(removeFromSuperlayer)];
-            [self.window orderOut:nil];
-            self.window = nil;
-        }
-
-        // Remove previous AVPlayerItemDidPlayToEndTimeNotification observers
-        [[NSNotificationCenter defaultCenter]
-            removeObserver:self
-                      name:AVPlayerItemDidPlayToEndTimeNotification
-                    object:nil];
+    // Cleanup existing wallpaper windows, players, and layers
+    for (NSWindow *win in self.wallpaperWindows) {
+        [win orderOut:nil];
     }
+    [self.wallpaperWindows removeAllObjects];
+    [self.playerLayers removeAllObjects];
+    [self.players removeAllObjects];
+
     g_videoPath = [videoPath UTF8String];
-    {
-        NSString *videoPathNSString =
-            [NSString stringWithUTF8String:g_videoPath.c_str()];
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        [defaults setObject:videoPathNSString forKey:@"LastWallpaperPath"];
-        [defaults synchronize];
-    }
+
+    NSString *videoPathNSString = [NSString stringWithUTF8String:g_videoPath.c_str()];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:videoPathNSString forKey:@"LastWallpaperPath"];
+    [defaults synchronize];
 
     std::filesystem::path p(g_videoPath);
     std::string videoName = p.stem().string();
@@ -549,19 +562,17 @@ NSView *content;
         return;
     }
 
+    // Extract static wallpaper frame
     NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(
         NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *customDir =
-        [appSupportDir stringByAppendingPathComponent:@"Livewall"];
+    NSString *customDir = [appSupportDir stringByAppendingPathComponent:@"Livewall"];
     [[NSFileManager defaultManager] createDirectoryAtPath:customDir
                               withIntermediateDirectories:YES
                                                attributes:nil
                                                     error:nil];
 
     std::string tempImage = std::string([[customDir
-        stringByAppendingPathComponent:[NSString
-                                           stringWithFormat:@"%s.jpg",
-                                                            videoName.c_str()]]
+        stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.jpg", videoName.c_str()]]
         UTF8String]);
 
     frame = extract_frame_avfoundation(g_videoPath, tempImage, 5);
@@ -570,52 +581,59 @@ NSView *content;
         return;
     }
 
-    mainScreen = [NSScreen mainScreen];
-    NSRect screenRect = [mainScreen frame];
+    // Loop over all screens
+    NSArray<NSScreen *> *screens = [NSScreen screens];
+    for (NSScreen *screen in screens) {
+        NSRect screenRect = screen.frame;
 
-    self.window =
-        [[NSWindow alloc] initWithContentRect:screenRect
-                                    styleMask:NSWindowStyleMaskBorderless
-                                      backing:NSBackingStoreBuffered
-                                        defer:NO];
-    [self.window setLevel:kCGDesktopWindowLevel - 1];
-    [self.window setOpaque:NO];
-    [self.window setBackgroundColor:[NSColor clearColor]];
-    [self.window setIgnoresMouseEvents:YES];
-    [self.window
-        setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
-                              NSWindowCollectionBehaviorStationary |
-                              NSWindowCollectionBehaviorIgnoresCycle];
+        NSWindow *window = [[NSWindow alloc] initWithContentRect:screenRect
+                                                       styleMask:NSWindowStyleMaskBorderless
+                                                         backing:NSBackingStoreBuffered
+                                                           defer:NO
+                                                          screen:screen];
+        [window setLevel:kCGDesktopWindowLevel - 1];
+        [window setOpaque:NO];
+        [window setBackgroundColor:[NSColor clearColor]];
+        [window setIgnoresMouseEvents:YES];
+        [window setCollectionBehavior:
+            NSWindowCollectionBehaviorCanJoinAllSpaces |
+            NSWindowCollectionBehaviorStationary |
+            NSWindowCollectionBehaviorIgnoresCycle];
 
-    NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
-    AVPlayerItem *item = [AVPlayerItem playerItemWithURL:videoURL];
-    self.player = [AVPlayer playerWithPlayerItem:item];
-    self.player.volume = 0.0;
+        NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
+        AVPlayerItem *item = [AVPlayerItem playerItemWithURL:videoURL];
+        AVPlayer *player = [AVPlayer playerWithPlayerItem:item];
+        player.volume = 0.0;
 
-    AVPlayerLayer *playerLayer =
-        [AVPlayerLayer playerLayerWithPlayer:self.player];
-    playerLayer.frame = self.window.contentView.bounds;
-    playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        AVPlayerLayer *playerLayer = [AVPlayerLayer playerLayerWithPlayer:player];
+        playerLayer.frame = window.contentView.bounds;
+        playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
 
-    [self.window.contentView setWantsLayer:YES];
-    [self.window.contentView.layer addSublayer:playerLayer];
+        [window.contentView setWantsLayer:YES];
+        [window.contentView.layer addSublayer:playerLayer];
 
-    [self.window makeKeyAndOrderFront:nil];
-    [self.player play];
+        [window makeKeyAndOrderFront:nil];
+        [player play];
 
-    [[NSNotificationCenter defaultCenter]
-        addObserverForName:AVPlayerItemDidPlayToEndTimeNotification
-                    object:item
-                     queue:nil
-                usingBlock:^(NSNotification *note) {
-                  [self.player seekToTime:kCMTimeZero];
-                  [self.player play];
-                }];
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(), ^{
-          set_wallpaper_all_spaces(frame);
-        });
+        [self.wallpaperWindows addObject:window];
+        [self.playerLayers addObject:playerLayer];
+        [self.players addObject:player];
+
+        [[NSNotificationCenter defaultCenter]
+            addObserverForName:AVPlayerItemDidPlayToEndTimeNotification
+                        object:item
+                         queue:nil
+                    usingBlock:^(NSNotification *note) {
+                        [player seekToTime:kCMTimeZero];
+                        [player play];
+                    }];
+    }
+
+    // Apply static wallpaper frame to all spaces after short delay
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        set_wallpaper_all_spaces(frame);
+    });
 }
 
 - (void)handleButtonClick:(NSButton *)sender {
@@ -656,6 +674,7 @@ NSView *content;
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     if ([self isFirstLaunch]) {
         [self promptForLoginItem];
+        [self checkAndPromptPermissions];
     }
     NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt: @YES};
 BOOL accessibilityEnabled = AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
@@ -843,8 +862,11 @@ NSButton *openFinderButton = [[NSButton alloc] initWithFrame:NSZeroRect];
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
     NSLog(@"🚪 App terminating...");
-    [self.player pause];
-    self.player = nil;
+    for (AVPlayer *player in self.players) {
+            [player pause];
+            player = nil;
+        
+    }
 
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];

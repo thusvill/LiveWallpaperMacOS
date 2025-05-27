@@ -1,6 +1,8 @@
 LiveWallpaperApp
 build
 build/**
-CMakeLists.txt
 build-xcode
 build-xcode/**
+**.bak
+**.patch
+.DS_Store

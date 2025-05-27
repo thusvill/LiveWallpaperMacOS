@@ -1,16 +1,16 @@
-# Live Wallpaper for MacOS
+# RollPlay - LiveWallpaper App for MacOS 15+
 
 This is an open-source live wallpaper applicationn for MacOS 15+
 
 ## Guide for DMG Installation
 
 > [!IMPORTANT]
-> ## Fix “LiveWallpaper.app” is corrupted and cannot be opened. It is recommended that you move the object to the recycle bin.
+> ## Fix “RollPlay.app” is corrupted and cannot be opened. It is recommended that you move the object to the recycle bin.
 > After you install the app in Application folder you have to bypass Gatekeeper for run this(I don't want to pay apple for opensource apps)
 > 
 > This will solve the occupation issue
 > 
-> `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 
+> `xattr -d com.apple.quarantine /Applications/RollPlay.app` 
 
 Click the OpenInFinder button and it'll open a folder, you can place wallpapers in it.
 
@@ -57,3 +57,4 @@ Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd Li
 > 
 > https://github.com/user-attachments/assets/c98441e8-de90-456b-8b6d-2a79a1bc2998
 
+For license details, see [LICENSE](LICENSE).
