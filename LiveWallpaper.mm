@@ -1,5 +1,5 @@
 /*
- * This file is part of RollPlay – LiveWallpaper App for macOS.
+ * This file is part of LiveWallpaper – LiveWallpaper App for macOS.
  * Copyright (C) 2025 Bios thusvill
  *
  * This program is free software: you can redistribute it and/or modify

@@ -6,3 +6,5 @@ build-xcode/**
 **.bak
 **.patch
 .DS_Store
+BrewReleases
+BrewReleases/**
