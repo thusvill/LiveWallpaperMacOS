@@ -2,6 +2,9 @@
 
 This is an open-source live wallpaper applicationn for MacOS 15+
 
+## Install using brew
+Run this on terminal `brew tap thusvill/livewallpaper && brew install --cask livewallpaper`
+
 ## Guide for DMG Installation
 
 > [!IMPORTANT]
