@@ -1075,8 +1075,7 @@ NSTextField *CreateLabel(NSString *string) {
     [self checkAndPromptPermissions];
   }
   NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
-  BOOL accessibilityEnabled =
-      AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)options);
+  
   [[[NSWorkspace sharedWorkspace] notificationCenter]
       addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
                   object:nil
