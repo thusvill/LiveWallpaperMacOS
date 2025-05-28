@@ -211,8 +211,10 @@ void checkFolderPath() {
         [defaults setObject:path forKey:@"WallpaperFolder"];
         [defaults synchronize];
         folderPath = path;
-        [self.settingsWindow close];
-        [self showSettingsWindow:nil];
+        if (self.settingsWindow) {
+          [self.settingsWindow close];
+          [self showSettingsWindow:nil];
+        }
         [self reloadGrid:nil];
         NSLog(@"Selected wallpaper folder: %@", path);
       }
@@ -757,7 +759,7 @@ NSTextField *CreateLabel(NSString *string) {
     btn.action = @selector(handleButtonClick:);
     btn.toolTip = filename;
 
-    //btn.title = filename;
+    // btn.title = filename;
     btn.bezelStyle = NSBezelStyleShadowlessSquare;
     btn.imageScaling = NSImageScaleAxesIndependently;
     btn.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1001,12 +1003,14 @@ NSTextField *CreateLabel(NSString *string) {
 }
 // Touchbar
 - (NSTouchBar *)makeTouchBar {
-    NSLog(@"Touchbar created");
+  NSLog(@"Touchbar created");
   NSTouchBar *touchBar = [[NSTouchBar alloc] init];
   touchBar.delegate = self;
   touchBar.defaultItemIdentifiers = @[
-    NSTouchBarItemIdentifierFlexibleSpace,@"com.livewallpaper.reload", @"com.livewallpaper.selectfolder",
-    @"com.livewallpaper.openfolder",@"com.livewallpaper.optimize",@"com.livewallpaper.settings", NSTouchBarItemIdentifierFlexibleSpace
+    NSTouchBarItemIdentifierFlexibleSpace, @"com.livewallpaper.reload",
+    @"com.livewallpaper.selectfolder", @"com.livewallpaper.openfolder",
+    @"com.livewallpaper.optimize", @"com.livewallpaper.settings",
+    NSTouchBarItemIdentifierFlexibleSpace
   ];
   return touchBar;
 }
@@ -1035,35 +1039,31 @@ NSTextField *CreateLabel(NSString *string) {
   } else if ([identifier isEqualToString:@"com.livewallpaper.reload"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button =
-        [NSButton buttonWithTitle:@"Reload Content ↺"
-                           target:self
-                           action:@selector(reloadGrid:)];
+    NSButton *button = [NSButton buttonWithTitle:@"Reload Content ↺"
+                                          target:self
+                                          action:@selector(reloadGrid:)];
     item.view = button;
     return item;
   } else if ([identifier isEqualToString:@"com.livewallpaper.settings"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button =
-        [NSButton buttonWithTitle:@"Open Settings ⚙️"
-                           target:self
-                           action:@selector(reloadGrid:)];
+    NSButton *button = [NSButton buttonWithTitle:@"Open Settings ⚙️"
+                                          target:self
+                                          action:@selector(showSettingsWindow:)];
     item.view = button;
     return item;
-  }else if ([identifier isEqualToString:@"com.livewallpaper.optimize"]) {
+  } else if ([identifier isEqualToString:@"com.livewallpaper.optimize"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button =
-        [NSButton buttonWithTitle:@"Optimize Video Codecs 🛠️"
-                           target:self
-                           action:@selector(reloadGrid:)];
+    NSButton *button = [NSButton buttonWithTitle:@"Optimize Video Codecs 🛠️"
+                                          target:self
+                                          action:@selector(convertCodec:)];
     item.view = button;
     return item;
   }
   NSLog(@"No Item found on identifier");
   return nil;
 }
-
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   [self.blurWindow.contentView setWantsLayer:YES];
@@ -1238,7 +1238,6 @@ NSTextField *CreateLabel(NSString *string) {
            keyEquivalent:@"O"];
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
-  
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
