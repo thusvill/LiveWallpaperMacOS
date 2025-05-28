@@ -5,6 +5,12 @@ build-xcode
 build-xcode/**
 **.bak
 **.patch
-.DS_Store
+.DS_Store/
+.DS_Store/**
 BrewReleases
 BrewReleases/**
+.cache/
+.cache/**
+.vscode/
+.vscode/**
+custom-Info.plist.in
