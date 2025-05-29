@@ -24,6 +24,7 @@
 #include <Foundation/NSObjCRuntime.h>
 #import <QuartzCore/QuartzCore.h>
 #import <ServiceManagement/SMAppService.h>
+#import <ServiceManagement/ServiceManagement.h>
 
 #import "LineModule.h"
 
@@ -203,6 +204,57 @@ void checkFolderPath() {
     [defaults synchronize];
   }
 }
+- (BOOL)enableAppAsLoginItem {
+  NSString *agentPath = [NSHomeDirectory()
+      stringByAppendingPathComponent:
+          @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+
+  NSString *execPath = [[NSBundle mainBundle] executablePath];
+
+  NSDictionary *plist = @{
+    @"Label" : @"com.biosthusvill.LiveWallpaper",
+    @"ProgramArguments" : @[ execPath ],
+    @"RunAtLoad" : @YES,
+    @"KeepAlive" : @NO
+  };
+
+  NSError *error = nil;
+  NSData *plistData = [NSPropertyListSerialization
+      dataWithPropertyList:plist
+                    format:NSPropertyListXMLFormat_v1_0
+                   options:0
+                     error:&error];
+  if (!plistData) {
+    NSLog(@"Failed to serialize plist: %@", error);
+    return NO;
+  }
+
+  if (![plistData writeToFile:agentPath atomically:YES]) {
+    NSLog(@"Failed to write LaunchAgent to %@", agentPath);
+    return NO;
+  }
+
+  // Load it
+  NSTask *task = [[NSTask alloc] init];
+  task.launchPath = @"/bin/launchctl";
+  task.arguments = @[ @"load", agentPath ];
+  [task launch];
+
+  NSLog(@"Successfully registered app as login item");
+  return YES;
+}
+
+- (IBAction)addLoginItem:(id)sender {
+  NSAlert *alert = [[NSAlert alloc] init];
+  [alert setMessageText:@"Start LiveWallpaper at login?"];
+  [alert addButtonWithTitle:@"Yes"];
+  [alert addButtonWithTitle:@"No"];
+  NSModalResponse response = [alert runModal];
+
+  if (response == NSAlertFirstButtonReturn) {
+    [self enableAppAsLoginItem];
+  }
+}
 
 - (void)selectWallpaperFolder:(id)sender {
   [NSApp activateIgnoringOtherApps:YES];
@@ -318,6 +370,25 @@ NSTextField *CreateLabel(NSString *string) {
     [OptimizeVideos setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:OptimizeVideos];
   }
+  NSString *agentPath = [NSHomeDirectory()
+      stringByAppendingPathComponent:
+          @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+  BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:agentPath];
+
+  if (!exists) {
+    LineModule *Permissions = [[LineModule alloc] initWithFrame:NSZeroRect];
+    [Permissions setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+    NSTextField *permissionText = CreateLabel(@"Add this to LoginItems");
+    NSButton *permissionButton =
+        CreateButton(@"GrantPermissions 􀮓", self, @selector(addLoginItem:));
+
+    [Permissions add:permissionText];
+    [Permissions add:permissionButton];
+
+    [Permissions setTranslatesAutoresizingMaskIntoConstraints:NO];
+    [stackView addArrangedSubview:Permissions];
+  }
 
   [settingsContent addSubview:stackView];
 
@@ -358,30 +429,35 @@ NSTextField *CreateLabel(NSString *string) {
 }
 
 - (void)promptForLoginItem {
-  NSAlert *alert = [[NSAlert alloc] init];
-  [alert setMessageText:@"Launch at Login"];
-  [alert
-      setInformativeText:
-          @"Would you like to launch this app automatically when you log in?"];
-  [alert addButtonWithTitle:@"Yes"];
-  [alert addButtonWithTitle:@"No"];
-  [alert setAlertStyle:NSAlertStyleInformational];
+  NSString *agentPath = [NSHomeDirectory()
+      stringByAppendingPathComponent:
+          @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+  BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:agentPath];
+  if (!exists) {
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Launch at Login"];
+    [alert setInformativeText:@"Would you like to launch this app "
+                              @"automatically when you log in?"];
+    [alert addButtonWithTitle:@"Yes"];
+    [alert addButtonWithTitle:@"No"];
+    [alert setAlertStyle:NSAlertStyleInformational];
 
-  [alert beginSheetModalForWindow:self.wallpaperWindows.firstObject
-                completionHandler:^(NSModalResponse returnCode) {
-                  if (returnCode == NSAlertFirstButtonReturn) {
+    [alert beginSheetModalForWindow:self.wallpaperWindows.firstObject
+                  completionHandler:^(NSModalResponse returnCode) {
+                    if (returnCode == NSAlertFirstButtonReturn) {
 
-                    SMAppService *service = [SMAppService
-                        loginItemServiceWithIdentifier:[[NSBundle mainBundle]
-                                                           bundleIdentifier]];
-                    NSError *error = nil;
-                    [service registerAndReturnError:&error];
-                    if (error) {
-                      NSLog(@"Error adding to login items: %@",
-                            error.localizedDescription);
+                      SMAppService *service = [SMAppService
+                          loginItemServiceWithIdentifier:[[NSBundle mainBundle]
+                                                             bundleIdentifier]];
+                      NSError *error = nil;
+                      [service registerAndReturnError:&error];
+                      if (error) {
+                        NSLog(@"Error adding to login items: %@",
+                              error.localizedDescription);
+                      }
                     }
-                  }
-                }];
+                  }];
+  }
 }
 
 - (void)pauseVideoPlayback {
@@ -766,7 +842,13 @@ NSTextField *CreateLabel(NSString *string) {
     btn.image = thumbImage ?: [NSImage imageNamed:NSImageNameCaution];
     btn.bezelStyle = NSBezelStyleShadowlessSquare;
     btn.imageScaling = NSImageScaleProportionallyUpOrDown;
-    btn.title = @"";
+    btn.title = filename;
+    NSMutableAttributedString *invisibleTitle =
+        [[NSMutableAttributedString alloc] initWithString:filename];
+    [invisibleTitle addAttribute:NSForegroundColorAttributeName
+                           value:[NSColor clearColor]
+                           range:NSMakeRange(0, filename.length)];
+    [btn setAttributedTitle:invisibleTitle];
     btn.target = self;
     btn.action = @selector(handleButtonClick:);
     btn.toolTip = filename;
