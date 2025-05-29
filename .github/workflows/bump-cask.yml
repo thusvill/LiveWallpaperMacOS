@@ -1,0 +1,42 @@
+name: Bump Homebrew Cask on Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-cask:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Homebrew Tap
+        uses: actions/checkout@v3
+        with:
+          repository: thusvill/homebrew-livewallpaper
+          token: ${{ secrets.GH_PAT }}
+          path: tap
+
+      - name: Extract Version
+        id: extract
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/V}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update Cask File
+        run: |
+          cd tap/Casks/l
+          sed -i '' "s/^  version \".*\"/  version \"${{ steps.extract.outputs.version }}\"/" livewallpaper.rb
+
+      - name: Run brew style --fix
+        run: |
+          brew tap thusvill/livewallpaper ./tap
+          brew style --fix tap/Casks/l/livewallpaper.rb
+
+      - name: Commit and Push Changes
+        run: |
+          cd tap
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add Casks/l/livewallpaper.rb
+          git commit -m "Bump version to ${{ steps.extract.outputs.version }}"
+          git push
