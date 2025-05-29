@@ -13,5 +13,4 @@ BrewReleases/**
 .cache/**
 .vscode/
 .vscode/**
-custom-Info.plist.in
 .DS_Store
