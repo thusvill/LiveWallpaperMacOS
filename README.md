@@ -39,7 +39,7 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 - git
 - Xcode
 - Cmake
-- 
+  
 Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)`
 
 ## Gallery
