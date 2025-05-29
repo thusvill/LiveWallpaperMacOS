@@ -152,6 +152,18 @@ void handleSpaceChange(NSNotification *note) {
   }
 }
 
+NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
+  NSString *path =
+      [NSString stringWithFormat:@"/System/Applications/%@.app", appName];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+    path = [NSString
+        stringWithFormat:@"/System/Library/CoreServices/%@.app", appName];
+  }
+  NSImage *icon = [[NSWorkspace sharedWorkspace] iconForFile:path];
+  [icon setSize:size];
+  return icon;
+}
+
 @interface AppDelegate
     : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTouchBarDelegate>
 //@property(strong) NSWindow *window;
@@ -1009,8 +1021,7 @@ NSTextField *CreateLabel(NSString *string) {
   touchBar.defaultItemIdentifiers = @[
     NSTouchBarItemIdentifierFlexibleSpace, @"com.livewallpaper.reload",
     @"com.livewallpaper.selectfolder", @"com.livewallpaper.openfolder",
-    @"com.livewallpaper.optimize", @"com.livewallpaper.settings",
-    NSTouchBarItemIdentifierFlexibleSpace
+    @"com.livewallpaper.settings", NSTouchBarItemIdentifierFlexibleSpace
   ];
   return touchBar;
 }
@@ -1022,7 +1033,7 @@ NSTextField *CreateLabel(NSString *string) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
     NSButton *button =
-        [NSButton buttonWithTitle:@"Select Wallaper Folder 📁"
+        [NSButton buttonWithTitle:@"📂"
                            target:self
                            action:@selector(selectWallpaperFolder:)];
     item.view = button;
@@ -1030,16 +1041,16 @@ NSTextField *CreateLabel(NSString *string) {
   } else if ([identifier isEqualToString:@"com.livewallpaper.openfolder"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button =
-        [NSButton buttonWithTitle:@"Open Wallpaper Folder 📂"
-                           target:self
-                           action:@selector(openWallpaperFolder:)];
+    NSButton *button = [NSButton
+        buttonWithImage:GetSystemAppIcon(@"Finder", NSMakeSize(24, 24))
+                 target:self
+                 action:@selector(openWallpaperFolder:)];
     item.view = button;
     return item;
   } else if ([identifier isEqualToString:@"com.livewallpaper.reload"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button = [NSButton buttonWithTitle:@"Reload Content ↺"
+    NSButton *button = [NSButton buttonWithTitle:@"􂣽"
                                           target:self
                                           action:@selector(reloadGrid:)];
     item.view = button;
@@ -1047,17 +1058,10 @@ NSTextField *CreateLabel(NSString *string) {
   } else if ([identifier isEqualToString:@"com.livewallpaper.settings"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button = [NSButton buttonWithTitle:@"Open Settings ⚙️"
-                                          target:self
-                                          action:@selector(showSettingsWindow:)];
-    item.view = button;
-    return item;
-  } else if ([identifier isEqualToString:@"com.livewallpaper.optimize"]) {
-    NSCustomTouchBarItem *item =
-        [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button = [NSButton buttonWithTitle:@"Optimize Video Codecs 🛠️"
-                                          target:self
-                                          action:@selector(convertCodec:)];
+    NSButton *button =
+        [NSButton buttonWithTitle:@"⚙️"
+                           target:self
+                           action:@selector(showSettingsWindow:)];
     item.view = button;
     return item;
   }
@@ -1075,7 +1079,7 @@ NSTextField *CreateLabel(NSString *string) {
     [self checkAndPromptPermissions];
   }
   NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
-  
+
   [[[NSWorkspace sharedWorkspace] notificationCenter]
       addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
                   object:nil
@@ -1153,9 +1157,9 @@ NSTextField *CreateLabel(NSString *string) {
   {
     LineModule *buttonPanel = [[LineModule alloc] initWithFrame:NSZeroRect];
     NSButton *settingsButton =
-        CreateButton(@"Settings ⚙️", self, @selector(showSettingsWindow:));
+        CreateButton(@"⚙️", self, @selector(showSettingsWindow:));
     NSButton *reloadButton =
-        CreateButton(@"Reload ↺", self, @selector(reloadGrid:));
+        CreateButton(@"􂣽", self, @selector(reloadGrid:));
 
     [buttonPanel add:reloadButton];
     [buttonPanel add:settingsButton];
@@ -1234,7 +1238,10 @@ NSTextField *CreateLabel(NSString *string) {
   NSMenu *menu = [[NSMenu alloc] init];
   [menu addItemWithTitle:@"Open UI"
                   action:@selector(showUIWindow)
-           keyEquivalent:@"O"];
+           keyEquivalent:@"o"];
+  [menu addItemWithTitle:@"Settings"
+                  action:@selector(showSettingsWindow:)
+           keyEquivalent:@"s"];
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
 }
