@@ -3,10 +3,8 @@ cmake_minimum_required(VERSION 3.16)
 project(LiveWallpaper LANGUAGES C CXX OBJC OBJCXX)
 
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 
 add_executable(LiveWallpaper MACOSX_BUNDLE LiveWallpaper.mm LineModule.m LineModule.h)
 
@@ -31,4 +29,15 @@ target_link_libraries(LiveWallpaper
     "-framework AVKit"
     "-framework ApplicationServices"
     "-framework ServiceManagement"
+)
+
+add_subdirectory(Deamon)
+
+add_custom_command(TARGET LiveWallpaper POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_BUNDLE_CONTENT_DIR:LiveWallpaper>/MacOS"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:wallpaperdeamon>"
+        "$<TARGET_BUNDLE_CONTENT_DIR:LiveWallpaper>/MacOS/"
+    COMMENT "Copying wallpaperdeamon into LiveWallpaper.app bundle"
 )

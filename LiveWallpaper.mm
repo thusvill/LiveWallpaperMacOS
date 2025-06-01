@@ -25,6 +25,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <ServiceManagement/SMAppService.h>
 #import <ServiceManagement/ServiceManagement.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #import "LineModule.h"
 
@@ -32,9 +33,25 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#import <mach/mach.h>
 #include <memory>
+#include <spawn.h>
 #include <stdexcept>
 #include <string>
+
+void LogMemoryUsage(void) {
+  task_vm_info_data_t vmInfo;
+  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+
+  kern_return_t kernReturn =
+      task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count);
+
+  if (kernReturn == KERN_SUCCESS) {
+    NSLog(@"📊 Memory in use: %llu MB", vmInfo.phys_footprint / 1024 / 1024);
+  } else {
+    NSLog(@"⚠️ Failed to retrieve memory usage.");
+  }
+}
 
 namespace fs = std::filesystem;
 
@@ -59,55 +76,6 @@ std::string run_command(const std::string &cmd) {
   }
 
   return result;
-}
-
-std::string extract_frame_avfoundation(const std::string &videoPath,
-                                       const std::string &outputImage,
-                                       int seconds) {
-  @autoreleasepool {
-    NSURL *url = [NSURL
-        fileURLWithPath:[NSString stringWithUTF8String:videoPath.c_str()]];
-    AVAsset *asset = [AVAsset assetWithURL:url];
-    AVAssetImageGenerator *imageGenerator =
-        [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    imageGenerator.appliesPreferredTrackTransform = YES;
-
-    CMTime time = CMTimeMakeWithSeconds(seconds, asset.duration.timescale);
-    NSError *error = nil;
-    CMTime actualTime;
-
-    CGImageRef imageRef = [imageGenerator copyCGImageAtTime:time
-                                                 actualTime:&actualTime
-                                                      error:&error];
-    if (!imageRef) {
-      NSLog(@"Error extracting image: %@", error);
-      return "";
-    }
-
-    NSString *outPath = [NSString stringWithUTF8String:outputImage.c_str()];
-    NSURL *outURL = [NSURL fileURLWithPath:outPath];
-
-    CGImageDestinationRef destination = CGImageDestinationCreateWithURL(
-        (__bridge CFURLRef)outURL, kUTTypePNG, 1, NULL);
-    if (!destination) {
-      NSLog(@"Could not create image destination");
-      CGImageRelease(imageRef);
-      return "";
-    }
-
-    CGImageDestinationAddImage(destination, imageRef, nil);
-    if (!CGImageDestinationFinalize(destination)) {
-      NSLog(@"Failed to write image");
-      CFRelease(destination);
-      CGImageRelease(imageRef);
-      return "";
-    }
-
-    CFRelease(destination);
-    CGImageRelease(imageRef);
-
-    return outputImage;
-  }
 }
 
 bool set_wallpaper_all_spaces(const std::string &imagePath) {
@@ -168,10 +136,7 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @interface AppDelegate
     : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTouchBarDelegate>
 //@property(strong) NSWindow *window;
-
-@property(nonatomic, strong) NSMutableArray<NSWindow *> *wallpaperWindows;
-@property(nonatomic, strong) NSMutableArray<AVPlayerLayer *> *playerLayers;
-@property(nonatomic, strong) NSMutableArray<AVPlayer *> *players;
+@property(nonatomic, strong) NSMutableArray *notificationObservers;
 
 @property(strong) NSWindow *blurWindow;
 @property(strong) NSStatusItem *statusItem;
@@ -255,6 +220,108 @@ void checkFolderPath() {
     [self enableAppAsLoginItem];
   }
 }
+- (NSString *)thumbnailCachePath {
+  NSArray *cacheDirs = NSSearchPathForDirectoriesInDomains(
+      NSCachesDirectory, NSUserDomainMask, YES);
+  NSString *systemCacheDir = cacheDirs.firstObject;
+  NSString *bundleName =
+      [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+
+  if (!bundleName || bundleName.length == 0) {
+    bundleName = @"LiveWallpaper";
+  }
+  NSString *thumbnailPath = [systemCacheDir
+      stringByAppendingPathComponent:[NSString
+                                         stringWithFormat:@"%@/thumbnails",
+                                                          bundleName]];
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:thumbnailPath]) {
+    [fm createDirectoryAtPath:thumbnailPath
+        withIntermediateDirectories:YES
+                         attributes:nil
+                              error:nil];
+  }
+
+  return thumbnailPath;
+}
+
+- (void)clearThumbnailCache {
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSString *thumbnailCachePath = [self thumbnailCachePath];
+
+
+  if ([fileManager fileExistsAtPath:thumbnailCachePath]) {
+    NSError *error = nil;
+    NSArray *files = [fileManager contentsOfDirectoryAtPath:thumbnailCachePath
+                                                      error:&error];
+
+    for (NSString *file in files) {
+      NSString *filePath =
+          [thumbnailCachePath stringByAppendingPathComponent:file];
+      [fileManager removeItemAtPath:filePath error:nil];
+    }
+  }
+}
+
+- (void)generateThumbnailsForFolder:(NSString *)folderPath {
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSString *thumbnailCachePath = [self thumbnailCachePath];
+
+
+  NSLog(@"Thumbnail path %@", thumbnailCachePath);
+
+  // Create thumbnail folder if not exists
+  if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
+    [fileManager createDirectoryAtPath:thumbnailCachePath
+           withIntermediateDirectories:YES
+                            attributes:nil
+                                 error:nil];
+  }
+
+  NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
+                                                                error:nil];
+
+  for (NSString *filename in files) {
+    if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
+        ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+      continue;
+    }
+
+    NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
+    NSURL *videoURL = [NSURL fileURLWithPath:filePath];
+    AVAsset *asset = [AVAsset assetWithURL:videoURL];
+    AVAssetImageGenerator *imageGenerator =
+        [[AVAssetImageGenerator alloc] initWithAsset:asset];
+    imageGenerator.appliesPreferredTrackTransform = YES;
+    imageGenerator.maximumSize = CGSizeMake(80, 45);
+
+    CMTime midpoint = CMTimeMakeWithSeconds(2.0, 600);
+    NSError *error = nil;
+    CGImageRef thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
+                                                      actualTime:NULL
+                                                           error:&error];
+
+    if (thumbImageRef && !error) {
+      NSImage *thumbImage =
+          [[NSImage alloc] initWithCGImage:thumbImageRef
+                                      size:NSMakeSize(160, 90)];
+      CGImageRelease(thumbImageRef);
+
+      NSData *imageData = [thumbImage TIFFRepresentation];
+      NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
+      NSData *jpgData = [rep representationUsingType:NSBitmapImageFileTypeJPEG
+                                          properties:@{}];
+      NSString *thumbName = [[filename stringByDeletingPathExtension] stringByAppendingPathExtension:@"jpg"];
+      NSString *thumbPath =
+          [thumbnailCachePath stringByAppendingPathComponent:thumbName];
+      [jpgData writeToFile:thumbPath atomically:YES];
+    } else {
+      NSLog(@"Error generating thumbnail for %@: %@", filename,
+            error.localizedDescription);
+    }
+  }
+}
 
 - (void)selectWallpaperFolder:(id)sender {
   [NSApp activateIgnoringOtherApps:YES];
@@ -279,7 +346,10 @@ void checkFolderPath() {
           [self.settingsWindow close];
           [self showSettingsWindow:nil];
         }
+        [self clearThumbnailCache];
+        [self generateThumbnailsForFolder:folderPath];
         [self reloadGrid:nil];
+
         NSLog(@"Selected wallpaper folder: %@", path);
       }
     }
@@ -442,7 +512,7 @@ NSTextField *CreateLabel(NSString *string) {
     [alert addButtonWithTitle:@"No"];
     [alert setAlertStyle:NSAlertStyleInformational];
 
-    [alert beginSheetModalForWindow:self.wallpaperWindows.firstObject
+    [alert beginSheetModalForWindow:self.blurWindow
                   completionHandler:^(NSModalResponse returnCode) {
                     if (returnCode == NSAlertFirstButtonReturn) {
 
@@ -458,32 +528,6 @@ NSTextField *CreateLabel(NSString *string) {
                     }
                   }];
   }
-}
-
-- (void)pauseVideoPlayback {
-  for (AVPlayer *player in self.players) {
-    if (player.rate != 0) {
-      [player pause];
-    }
-  }
-}
-
-- (void)resumeVideoPlayback {
-  for (AVPlayer *player in self.players) {
-    if (player.rate == 0) {
-      [player play];
-    }
-  }
-}
-
-- (void)screenLocked:(NSNotification *)notification {
-  NSLog(@"🔒 Screen locked");
-  [self pauseVideoPlayback];
-}
-
-- (void)screenUnlocked:(NSNotification *)notification {
-  NSLog(@"🔓 Screen unlocked");
-  [self resumeVideoPlayback];
 }
 
 - (void)showProgressWindowWithMax:(NSInteger)maxCount {
@@ -800,8 +844,14 @@ NSTextField *CreateLabel(NSString *string) {
 
 - (void)ReloadContent {
 
-  if (buttons.count > 0) {
-    [buttons removeAllObjects];
+  for (NSButton *btn in buttons) {
+    [btn removeFromSuperview];
+  }
+  [buttons removeAllObjects];
+
+  for (NSView *subview in gridContainer.arrangedSubviews) {
+    [gridContainer removeArrangedSubview:subview];
+    [subview removeFromSuperview];
   }
 
   checkFolderPath();
@@ -816,49 +866,39 @@ NSTextField *CreateLabel(NSString *string) {
       [allFiles filteredArrayUsingPredicate:predicate];
 
   for (NSString *filename in videoFiles) {
-    NSString *videoPath = [folderPath stringByAppendingPathComponent:filename];
-    NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
+    @autoreleasepool {
+      NSString *videoPath =
+          [folderPath stringByAppendingPathComponent:filename];
+      NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
 
-    AVAsset *asset = [AVAsset assetWithURL:videoURL];
-    AVAssetImageGenerator *imageGenerator =
-        [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    imageGenerator.appliesPreferredTrackTransform = YES;
+      NSButton *btn = [[NSButton alloc] init];
 
-    CMTime midpoint = CMTimeMakeWithSeconds(2.0, 600);
-    CGImageRef thumbImageRef = NULL;
-    NSError *error = nil;
-    thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
-                                           actualTime:NULL
-                                                error:&error];
+      NSString *cacheImagePath = [[self thumbnailCachePath]
+          stringByAppendingPathComponent:
+              [[filename stringByDeletingPathExtension] stringByAppendingPathExtension:@"jpg"]];
 
-    NSImage *thumbImage = nil;
-    if (thumbImageRef && !error) {
-      thumbImage = [[NSImage alloc] initWithCGImage:thumbImageRef
-                                               size:NSMakeSize(160, 90)];
-      CGImageRelease(thumbImageRef);
+      NSImage *image = [[NSImage alloc] initWithContentsOfFile:cacheImagePath];
+      if (image) {
+        btn.image = image;
+      } else {
+        NSLog(@"Thumbnail not found for %@", cacheImagePath);
+      }
+
+      btn.image = image;
+      btn.bezelStyle = NSBezelStyleShadowlessSquare;
+      btn.imageScaling = NSImageScaleProportionallyUpOrDown;
+      btn.title = filename;
+      btn.target = self;
+      btn.action = @selector(handleButtonClick:);
+      btn.toolTip = filename;
+
+      // btn.title = filename;
+      btn.bezelStyle = NSBezelStyleShadowlessSquare;
+      btn.imageScaling = NSImageScaleAxesIndependently;
+      btn.translatesAutoresizingMaskIntoConstraints = NO;
+      btn.tag = [videoFiles indexOfObject:filename];
+      [buttons addObject:btn];
     }
-
-    NSButton *btn = [[NSButton alloc] init];
-    btn.image = thumbImage ?: [NSImage imageNamed:NSImageNameCaution];
-    btn.bezelStyle = NSBezelStyleShadowlessSquare;
-    btn.imageScaling = NSImageScaleProportionallyUpOrDown;
-    btn.title = filename;
-    NSMutableAttributedString *invisibleTitle =
-        [[NSMutableAttributedString alloc] initWithString:filename];
-    [invisibleTitle addAttribute:NSForegroundColorAttributeName
-                           value:[NSColor clearColor]
-                           range:NSMakeRange(0, filename.length)];
-    [btn setAttributedTitle:invisibleTitle];
-    btn.target = self;
-    btn.action = @selector(handleButtonClick:);
-    btn.toolTip = filename;
-
-    // btn.title = filename;
-    btn.bezelStyle = NSBezelStyleShadowlessSquare;
-    btn.imageScaling = NSImageScaleAxesIndependently;
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.tag = [videoFiles indexOfObject:filename];
-    [buttons addObject:btn];
   }
 }
 - (void)convertCodec:(id)sender {
@@ -866,12 +906,15 @@ NSTextField *CreateLabel(NSString *string) {
 }
 
 - (void)reloadGrid:(id)sender {
-  [self ReloadContent];
-
-  for (NSView *subview in gridContainer.arrangedSubviews) {
-    [gridContainer removeArrangedSubview:subview];
-    [subview removeFromSuperview];
+  NSString *cachePath = [self thumbnailCachePath];
+  NSArray *contents =
+      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath
+                                                          error:nil];
+  if (contents.count == 0) {
+    checkFolderPath();
+    [self generateThumbnailsForFolder:folderPath];
   }
+  [self ReloadContent];
 
   CGFloat spacing = 12.0;
   CGFloat padding = 24.0;
@@ -939,25 +982,49 @@ NSTextField *CreateLabel(NSString *string) {
       completionHandler:nil];
 }
 
+void killAllDaemons() {
+  NSTask *killTask = [[NSTask alloc] init];
+  killTask.launchPath = @"/usr/bin/killall";
+  killTask.arguments = @[ @"wallpaperdeamon" ];
+  [killTask launch];
+  [killTask waitUntilExit];
+
+  int status = killTask.terminationStatus;
+  if (status != 0) {
+    NSLog(@"No running VideoWallpaperDaemon process found or killall failed");
+  } else {
+    NSLog(@"VideoWallpaperDaemon processes killed");
+  }
+}
+extern char **environ;
+void launchDeamon(NSString *videoPath, NSString *imagePath) {
+  NSString *daemonRelativePath = @"Contents/MacOS/wallpaperdeamon";
+  NSString *appPath = [[NSBundle mainBundle] bundlePath];
+  NSString *daemonPath =
+      [appPath stringByAppendingPathComponent:daemonRelativePath];
+
+  const char *daemonPathC = [daemonPath UTF8String];
+  const char *args[] = {daemonPathC, [videoPath UTF8String],
+                        [imagePath UTF8String], NULL};
+
+  pid_t pid;
+  int status =
+      posix_spawn(&pid, daemonPathC, NULL, NULL, (char *const *)args, environ);
+  if (status != 0) {
+    NSLog(@"Failed to launch daemon: %d", status);
+  }
+}
+
 - (void)startWallpaperWithPath:(NSString *)videoPath {
+  LogMemoryUsage();
 
-  [NSAnimationContext
-      runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.4;
-        for (NSWindow *win in self.wallpaperWindows) {
-          win.animator.alphaValue = 0.0;
-        }
-      }
-      completionHandler:^{
-        for (NSWindow *win in self.wallpaperWindows) {
-          [win orderOut:nil];
-        }
-        [self.wallpaperWindows removeAllObjects];
-        [self.playerLayers removeAllObjects];
-        [self.players removeAllObjects];
-      }];
+  for (id observer in self.notificationObservers) {
+    [[NSNotificationCenter defaultCenter] removeObserver:observer];
+  }
+  [self.notificationObservers removeAllObjects];
+  killAllDaemons();
 
-  g_videoPath = [videoPath UTF8String];
+  g_videoPath = std::string([videoPath UTF8String]);
 
   NSString *videoPathNSString =
       [NSString stringWithUTF8String:g_videoPath.c_str()];
@@ -973,7 +1040,6 @@ NSTextField *CreateLabel(NSString *string) {
     return;
   }
 
-  // Extract static wallpaper frame
   NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(
       NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
   NSString *customDir =
@@ -983,77 +1049,18 @@ NSTextField *CreateLabel(NSString *string) {
                                              attributes:nil
                                                   error:nil];
 
-  std::string tempImage = std::string([[customDir
-      stringByAppendingPathComponent:[NSString
-                                         stringWithFormat:@"%s.jpg",
-                                                          videoName.c_str()]]
-      UTF8String]);
+  // Compose full output path
+  NSString *imageFilename =
+      [NSString stringWithFormat:@"%s.jpg", videoName.c_str()];
+  NSString *imagePath =
+      [customDir stringByAppendingPathComponent:imageFilename];
+  frame = std::string([imagePath UTF8String]);
 
-  frame = extract_frame_avfoundation(g_videoPath, tempImage, 5);
-  if (frame.empty()) {
-    std::cerr << "Failed to extract frame from video.\n";
-    return;
-  }
+  NSLog(@"videoPath = %@", videoPath);
 
-  // Loop over all screens
-  NSArray<NSScreen *> *screens = [NSScreen screens];
-  for (NSScreen *screen in screens) {
-    NSRect screenRect = screen.frame;
+  launchDeamon(videoPath, imagePath);
+  LogMemoryUsage();
 
-    NSWindow *window =
-        [[NSWindow alloc] initWithContentRect:screenRect
-                                    styleMask:NSWindowStyleMaskBorderless
-                                      backing:NSBackingStoreBuffered
-                                        defer:NO
-                                       screen:screen];
-    [window setLevel:kCGDesktopWindowLevel - 1];
-    [window setOpaque:NO];
-    [window setBackgroundColor:[NSColor clearColor]];
-    [window setIgnoresMouseEvents:YES];
-    [window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
-                                  NSWindowCollectionBehaviorStationary |
-                                  NSWindowCollectionBehaviorIgnoresCycle];
-
-    NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
-    AVPlayerItem *item = [AVPlayerItem playerItemWithURL:videoURL];
-    AVPlayer *player = [AVPlayer playerWithPlayerItem:item];
-    player.volume = 0.0;
-
-    AVPlayerLayer *playerLayer = [AVPlayerLayer playerLayerWithPlayer:player];
-    playerLayer.frame = window.contentView.bounds;
-    playerLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-
-    [window.contentView setWantsLayer:YES];
-    playerLayer.opacity = 0.0; // Initial transparency
-    [window.contentView.layer addSublayer:playerLayer];
-
-    // Animate fade-in
-    CABasicAnimation *fadeIn =
-        [CABasicAnimation animationWithKeyPath:@"opacity"];
-    fadeIn.fromValue = @0.0;
-    fadeIn.toValue = @1.0;
-    fadeIn.duration = 0.6;
-    [playerLayer addAnimation:fadeIn forKey:@"fadeIn"];
-    playerLayer.opacity = 1.0; // Final state
-
-    [window makeKeyAndOrderFront:nil];
-    [player play];
-
-    [self.wallpaperWindows addObject:window];
-    [self.playerLayers addObject:playerLayer];
-    [self.players addObject:player];
-
-    [[NSNotificationCenter defaultCenter]
-        addObserverForName:AVPlayerItemDidPlayToEndTimeNotification
-                    object:item
-                     queue:nil
-                usingBlock:^(NSNotification *note) {
-                  [player seekToTime:kCMTimeZero];
-                  [player play];
-                }];
-  }
-
-  // Apply static wallpaper frame to all spaces after short delay
   dispatch_after(
       dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
       dispatch_get_main_queue(), ^{
@@ -1063,10 +1070,10 @@ NSTextField *CreateLabel(NSString *string) {
 
 - (void)handleButtonClick:(NSButton *)sender {
   NSLog(@"Clicked: %@", sender.title);
-  NSString *folderPath =
-      [NSHomeDirectory() stringByAppendingPathComponent:@"Livewall"];
+
   NSString *videoPath =
       [folderPath stringByAppendingPathComponent:sender.title];
+
   [self startWallpaperWithPath:videoPath];
 }
 
@@ -1169,18 +1176,6 @@ NSTextField *CreateLabel(NSString *string) {
               usingBlock:^(NSNotification *_Nonnull note) {
                 handleSpaceChange(note);
               }];
-
-  [[[NSWorkspace sharedWorkspace] notificationCenter]
-      addObserver:self
-         selector:@selector(screenLocked:)
-             name:NSWorkspaceSessionDidResignActiveNotification
-           object:nil];
-
-  [[[NSWorkspace sharedWorkspace] notificationCenter]
-      addObserver:self
-         selector:@selector(screenUnlocked:)
-             name:NSWorkspaceSessionDidBecomeActiveNotification
-           object:nil];
 
   NSRect frame = NSMakeRect(0, 0, 800, 600);
   self.blurWindow = [[NSWindow alloc]
@@ -1330,10 +1325,7 @@ NSTextField *CreateLabel(NSString *string) {
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
   NSLog(@"🚪 App terminating...");
-  for (AVPlayer *player in self.players) {
-    [player pause];
-    player = nil;
-  }
+  killAllDaemons();
 
   [[NSNotificationCenter defaultCenter] removeObserver:self];
   [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
@@ -1388,7 +1380,9 @@ int main(int argc, const char *argv[]) {
     NSString *savedPath = [defaults stringForKey:@"LastWallpaperPath"];
     if (savedPath &&
         [[NSFileManager defaultManager] fileExistsAtPath:savedPath]) {
+      LogMemoryUsage();
       [delegate startWallpaperWithPath:savedPath];
+      LogMemoryUsage();
     }
     [app run];
   }
