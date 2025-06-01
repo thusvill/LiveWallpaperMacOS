@@ -2,7 +2,9 @@ name: Bump Homebrew Cask on Release
 
 on:
   release:
-    types: [published]
+    types:
+      - published
+      - edited
 
 jobs:
   update-cask:
@@ -22,10 +24,24 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/V}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Download Release Asset
+        run: |
+          asset_url=$(gh release view "V${{ steps.extract.outputs.version }}" --json assets -q '.assets[] | select(.name | test("\\.dmg$|\\.zip$")) | .url')
+          curl -L "$asset_url" -o app_release
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+
+      - name: Compute SHA256 Checksum
+        id: checksum
+        run: |
+          SHA256=$(shasum -a 256 app_release | awk '{print $1}')
+          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
+
       - name: Update Cask File
         run: |
           cd tap/Casks/l
           sed -i '' "s/^  version \".*\"/  version \"${{ steps.extract.outputs.version }}\"/" livewallpaper.rb
+          sed -i '' "s/^  sha256 \".*\"/  sha256 \"${{ steps.checksum.outputs.sha256 }}\"/" livewallpaper.rb
 
       - name: Run brew style --fix
         run: |
