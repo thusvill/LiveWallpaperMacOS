@@ -69,9 +69,15 @@ jobs:
 
       - name: Commit and Push Changes
         run: |
-          cd tap
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add Casks/l/livewallpaper.rb
-          git commit -m "Bump version to ${{ steps.extract.outputs.version }}"
-          git push
+         cd tap
+         git config user.name "GitHub Actions"
+         git config user.email "actions@github.com"
+
+         # Check for changes before committing
+         if git diff --quiet; then
+            echo "No changes to commit."
+         else
+           git add Casks/l/livewallpaper.rb
+           git commit -m "Bump version to ${{ steps.extract.outputs.version }}"
+           git push
+         fi
