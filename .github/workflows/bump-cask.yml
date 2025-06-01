@@ -1,6 +1,7 @@
 name: Bump Homebrew Cask on Release
 
 on:
+  workflow_dispatch:
   release:
     types:
       - published
