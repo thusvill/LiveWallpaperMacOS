@@ -58,8 +58,9 @@ jobs:
       - name: Update Cask File
         run: |
           cd tap/Casks/l
-          sed -i '' "s/^  version \".*\"/  version \"${{ steps.extract.outputs.version }}\"/" livewallpaper.rb
-          sed -i '' "s/^  sha256 \".*\"/  sha256 \"${{ steps.sha.outputs.sha }}\"/" livewallpaper.rb
+          sed -i '' "s/^[[:space:]]*version \".*\"/  version \"${{ steps.extract.outputs.version }}\"/" livewallpaper.rb
+          sed -i '' "s/^[[:space:]]*sha256 \".*\"/  sha256 \"${{ steps.sha.outputs.sha }}\"/" livewallpaper.rb
+
 
       - name: Run brew style --fix
         run: |
