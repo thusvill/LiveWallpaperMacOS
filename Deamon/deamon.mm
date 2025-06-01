@@ -86,7 +86,6 @@
   }
   return self;
 }
-
 - (void)setupWallpaperWithVideo:(NSString *)videoPath {
   NSArray<NSScreen *> *screens = [NSScreen screens];
   NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
@@ -100,7 +99,9 @@
                                       backing:NSBackingStoreBuffered
                                         defer:NO
                                        screen:screen];
-    [window setLevel:kCGDesktopWindowLevel - 1];
+
+    [window setLevel:kCGDesktopIconWindowLevel - 1];
+
     [window setOpaque:NO];
     [window setBackgroundColor:[NSColor clearColor]];
     [window setIgnoresMouseEvents:YES];
@@ -108,6 +109,7 @@
                                   NSWindowCollectionBehaviorStationary |
                                   NSWindowCollectionBehaviorIgnoresCycle];
     [window setHasShadow:NO];
+    [window toggleFullScreen:nil];
 
     AVAsset *asset = [AVAsset assetWithURL:videoURL];
     AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
@@ -115,17 +117,25 @@
     AVPlayerLooper *looper = [AVPlayerLooper playerLooperWithPlayer:player
                                                        templateItem:item];
 
+    [window.contentView setWantsLayer:YES];
     AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
     layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
     layer.frame = window.contentView.bounds;
-    layer.needsDisplayOnBoundsChange = NO;
+    layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    layer.needsDisplayOnBoundsChange = YES;
     layer.actions = @{@"contents" : [NSNull null]};
+    [window.contentView.layer addSublayer:layer];
 
-    [window.contentView setWantsLayer:YES];
+    NSPoint origin = frame.origin;
+
+    [window setFrameOrigin:origin];
+
+    NSLog(@"Screen frame: %@", NSStringFromRect(screen.frame));
+    NSLog(@"ContentView bounds: %@",
+          NSStringFromRect(window.contentView.bounds));
 
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    [window.contentView.layer addSublayer:layer];
     [CATransaction commit];
 
     [window makeKeyAndOrderFront:nil];
@@ -137,8 +147,6 @@
     [_players addObject:player];
     [_playerLayers addObject:layer];
     [_loopers addObject:looper];
-
-
 
     [player play];
   }
