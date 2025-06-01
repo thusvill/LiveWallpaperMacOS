@@ -110,6 +110,7 @@
         [_players addObject:player];
         [_playerLayers addObject:layer];
         [_loopers addObject:looper];
+        player.muted= YES;
 
         [player play];
     }
