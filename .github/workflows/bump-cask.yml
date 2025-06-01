@@ -1,11 +1,10 @@
-name: Bump Homebrew Cask on Release
+name: Bump Homebrew Cask on Release or Edit
 
 on:
-  workflow_dispatch:
   release:
-    types:
-      - published
-      - edited
+    types: [published, edited]
+  workflow_dispatch:
+
 jobs:
   update-cask:
     runs-on: macos-latest
@@ -18,34 +17,42 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           path: tap
 
-      - name: Extract Version
+      - name: Extract Version and Asset URL
         id: extract
         run: |
-          # Extract version number from tag (strip leading 'V' if exists)
-          VERSION="${GITHUB_REF#refs/tags/V}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/V}"
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Download latest release asset
-        id: download_asset
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          # Get URL of latest dmg or zip release asset
-          asset_url=$(gh release view --repo thusvill/LiveWallpaperMacOS --json assets -q '.assets[] | select(.name | test("\\.dmg$|\\.zip$")) | .url')
-          echo "Asset URL: $asset_url"
-          curl -L "$asset_url" -o latest_asset
+          ASSET_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            https://api.github.com/repos/${{ github.repository }}/releases/tags/V$VERSION \
+            | jq -r '.assets[0].browser_download_url')
 
-      - name: Calculate SHA256 checksum
-        id: sha256
-        run: |
-          sha256sum=$(shasum -a 256 latest_asset | awk '{print $1}')
-          echo "sha256=$sha256sum" >> "$GITHUB_OUTPUT"
+          if [[ "$ASSET_URL" == "null" ]]; then
+            echo "Error: Could not find asset for version V$VERSION"
+            exit 1
+          fi
 
-      - name: Update Cask File with Version and SHA256
+          echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Download Release File
+        run: |
+          curl -L "${{ steps.extract.outputs.asset_url }}" -o asset.tar
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          SHA=$(shasum -a 256 asset.tar | awk '{ print $1 }')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Update Cask File
         run: |
           cd tap/Casks/l
-          sed -i '' "s#^  version \".*\"#  version \"${{ steps.extract.outputs.version }}\"#" livewallpaper.rb
-          sed -i '' "s#^  sha256 \".*\"#  sha256 \"${{ steps.sha256.outputs.sha256 }}\"#" livewallpaper.rb
+          sed -i '' "s/^  version \".*\"/  version \"${{ steps.extract.outputs.version }}\"/" livewallpaper.rb
+          sed -i '' "s/^  sha256 \".*\"/  sha256 \"${{ steps.sha.outputs.sha }}\"/" livewallpaper.rb
 
       - name: Run brew style --fix
         run: |
@@ -58,5 +65,5 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add Casks/l/livewallpaper.rb
-          git commit -m "Bump version to ${{ steps.extract.outputs.version }} with new sha256"
+          git commit -m "Bump version to ${{ steps.extract.outputs.version }}"
           git push
