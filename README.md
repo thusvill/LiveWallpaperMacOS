@@ -1,3 +1,6 @@
+> [!NOTE]
+> ## I'll be away for 5 months, so the repo won't update frequently.
+
 # LiveWallpaper App for MacOS 15+
 
 This is an open-source live wallpaper applicationn for MacOS 15+
