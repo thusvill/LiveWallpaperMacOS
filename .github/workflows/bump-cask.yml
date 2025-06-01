@@ -21,22 +21,29 @@ jobs:
         id: extract
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF#refs/tags/V}"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # Fetch latest release
+          release_json=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/releases/latest)
 
-          ASSET_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          TAG_NAME=$(echo "$release_json" | jq -r '.tag_name')
+          VERSION="${TAG_NAME#V}"  # strip leading V if present
+          ASSET_URL=$(echo "$release_json" | jq -r '.assets[0].browser_download_url')
+          else
+            # Triggered by a GitHub Release
+            VERSION="${GITHUB_REF#refs/tags/V}"
+            ASSET_URL=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             https://api.github.com/repos/${{ github.repository }}/releases/tags/V$VERSION \
             | jq -r '.assets[0].browser_download_url')
+          fi
 
-          if [[ "$ASSET_URL" == "null" ]]; then
+          if [[ "$ASSET_URL" == "null" || -z "$ASSET_URL" ]]; then
             echo "Error: Could not find asset for version V$VERSION"
             exit 1
           fi
 
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "asset_url=$ASSET_URL" >> "$GITHUB_OUTPUT"
+
 
       - name: Download Release File
         run: |
