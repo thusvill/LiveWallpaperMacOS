@@ -25,12 +25,13 @@ jobs:
           VERSION="${GITHUB_REF#refs/tags/V}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Download Release Asset
+      - name: Download Latest DMG/ZIP Asset
         run: |
-          asset_url=$(gh release view "V${{ steps.extract.outputs.version }}" --json assets -q '.assets[] | select(.name | test("\\.dmg$|\\.zip$")) | .url')
-          curl -L "$asset_url" -o app_release
+           asset_url=$(gh release view --repo thusvill/LiveWallpaperMacOS --json assets -q '.assets[] | select(.name | test("\\.dmg$|\\.zip$")) | .url')
+            curl -L "$asset_url" -o app_release
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+
 
       - name: Compute SHA256 Checksum
         id: checksum
