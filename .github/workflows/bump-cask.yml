@@ -27,6 +27,8 @@ jobs:
 
       - name: Download latest release asset
         id: download_asset
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           # Get URL of latest dmg or zip release asset
           asset_url=$(gh release view --repo thusvill/LiveWallpaperMacOS --json assets -q '.assets[] | select(.name | test("\\.dmg$|\\.zip$")) | .url')
