@@ -1217,6 +1217,8 @@ void launchDeamon(NSString *videoPath, NSString *imagePath) {
   [self.blurWindow.contentView setWantsLayer:YES];
   [self.settingsWindow.contentView setWantsLayer:YES];
 
+  [self fadeOutWindowsWithCompletion:nil];
+
   checkFolderPath();
   if ([self isFirstLaunch]) {
     [self promptForLoginItem];
@@ -1418,6 +1420,26 @@ void launchDeamon(NSString *videoPath, NSString *imagePath) {
       }];
   return NO;
 }
+- (void)fadeOutWindowsWithCompletion:(void (^)(void))completion {
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.4;
+        self.blurWindow.animator.alphaValue = 0.0;
+        if (self.settingsWindow) {
+            self.settingsWindow.animator.alphaValue = 0.0;
+        }
+    } completionHandler:^{
+        [self.blurWindow orderOut:nil];
+        if (self.settingsWindow) {
+            [self.settingsWindow orderOut:nil];
+        }
+        self.blurWindow.alphaValue = 1.0;
+        if (self.settingsWindow) {
+            self.settingsWindow.alphaValue = 1.0;
+        }
+        if (completion) completion();
+    }];
+}
+
 
 @end
 
@@ -1439,6 +1461,8 @@ int main(int argc, const char *argv[]) {
       [delegate startWallpaperWithPath:savedPath];
       LogMemoryUsage();
     }
+    
+
     [app run];
   }
 }
