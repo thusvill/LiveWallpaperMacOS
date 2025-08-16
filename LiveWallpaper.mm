@@ -145,7 +145,10 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @property(strong) NSTextField *progressLabel;
 @property(strong) NSProgressIndicator *progressBar;
 @property(strong) NSTextView *logTextView;
+
 @property(strong) NSWindow *settingsWindow;
+
+@property (strong) NSTextField *precentage;
 @end
 
 @implementation AppDelegate
@@ -440,6 +443,35 @@ NSTextField *CreateLabel(NSString *string) {
     [OptimizeVideos setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:OptimizeVideos];
   }
+  {
+    LineModule *videoVolume = [[LineModule alloc] initWithFrame:NSZeroRect];
+    [videoVolume setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+    NSTextField *volumeText = CreateLabel(@"Video Volume");
+
+    NSSlider *slider = [[NSSlider alloc] initWithFrame:NSMakeRect(20, 50, 200, 20)];
+    slider.minValue = 0;
+    slider.maxValue = 100;
+    slider.floatValue = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolumeprecentage"];
+    slider.target = self;
+    slider.action = @selector(sliderValueChanged:);
+    
+    self.precentage = CreateLabel(@"Precentage");
+    self.precentage.editable = NO;
+    self.precentage.selectable = NO;
+    self.precentage.stringValue = [NSString stringWithFormat:@"%.0f%%", slider.floatValue];
+
+    [videoVolume add:volumeText];
+    [videoVolume add:slider];
+    [videoVolume add:self.precentage];
+
+    [self.precentage.widthAnchor constraintEqualToConstant:60].active = YES;
+
+
+    [videoVolume setTranslatesAutoresizingMaskIntoConstraints:NO];
+    [stackView addArrangedSubview:videoVolume];
+  }
+
   NSString *agentPath = [NSHomeDirectory()
       stringByAppendingPathComponent:
           @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
@@ -486,6 +518,29 @@ NSTextField *CreateLabel(NSString *string) {
         self.settingsWindow.animator.alphaValue = 1.0;
       }
       completionHandler:nil];
+}
+
+- (void)sliderValueChanged:(NSSlider *)sender {
+    float f_percentage = sender.floatValue;      // 0 → 100
+    float volume = f_percentage / 100.0f;        // 0.0 → 1.0
+
+    NSLog(@"Slider: %.0f%% → volume: %.2f", f_percentage, volume);
+    self.precentage.stringValue = [NSString stringWithFormat:@"%.0f%%", f_percentage];
+
+    [[NSUserDefaults standardUserDefaults] setFloat:f_percentage forKey:@"wallpapervolumeprecentage"];
+    [[NSUserDefaults standardUserDefaults] setFloat:volume forKey:@"wallpapervolume"];
+
+
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+
+CFNotificationCenterPostNotification(
+    CFNotificationCenterGetDarwinNotifyCenter(),
+    CFSTR("com.live.wallpaper.volumeChanged"),
+    NULL, NULL, true
+);
+
+
 }
 
 - (BOOL)isFirstLaunch {

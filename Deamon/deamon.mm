@@ -140,8 +140,8 @@
 
     [window makeKeyAndOrderFront:nil];
 
-    player.volume = 0.0;
-    player.muted = YES;
+    player.volume = 1.0;
+    player.muted =NO;
 
     [_windows addObject:window];
     [_players addObject:player];
@@ -164,7 +164,25 @@
   }
 }
 
+- (void)setVolume:(float)volume {
+    NSLog(@"[Daemon] setVolume called: %.2f", volume);
+    for (AVQueuePlayer *player in _players) {
+        player.volume = volume;
+    }
+}
+
 @end
+
+static void VolumeChangedCallback(CFNotificationCenterRef center,
+                                  void *observer,
+                                  CFStringRef name,
+                                  const void *object,
+                                  CFDictionaryRef userInfo) {
+    VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
+    float volume = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+    [daemon setVolume:volume];
+}
+
 
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
@@ -179,6 +197,18 @@ int main(int argc, const char *argv[]) {
     VideoWallpaperDaemon *daemon =
         [[VideoWallpaperDaemon alloc] initWithVideo:videoPath
                                         frameOutput:framePath];
+
+CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            (__bridge const void *)(daemon),
+            VolumeChangedCallback,
+            CFSTR("com.live.wallpaper.volumeChanged"),
+            NULL,
+            CFNotificationSuspensionBehaviorDeliverImmediately
+        );
+
+
+
     [[NSRunLoop mainRunLoop] run];
   }
   return 0;
