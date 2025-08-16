@@ -6,7 +6,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
+
 add_executable(LiveWallpaper MACOSX_BUNDLE LiveWallpaper.mm LineModule.m LineModule.h)
+
+
 
 set_source_files_properties(LiveWallpaper.mm PROPERTIES
     COMPILE_FLAGS "-std=c++17"
