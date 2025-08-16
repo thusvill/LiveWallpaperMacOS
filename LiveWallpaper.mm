@@ -149,6 +149,9 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @property(strong) NSWindow *settingsWindow;
 
 @property (strong) NSTextField *precentage;
+@property (strong) NSTextField *touchbar_volume;
+@property (strong) NSPopoverTouchBarItem *volumePopoverItem;
+
 @end
 
 @implementation AppDelegate
@@ -520,27 +523,28 @@ NSTextField *CreateLabel(NSString *string) {
       completionHandler:nil];
 }
 
+
+
 - (void)sliderValueChanged:(NSSlider *)sender {
-    float f_percentage = sender.floatValue;      // 0 → 100
-    float volume = f_percentage / 100.0f;        // 0.0 → 1.0
+    float f_percentage = sender.floatValue;
+    float volume = f_percentage / 100.0f;
 
     NSLog(@"Slider: %.0f%% → volume: %.2f", f_percentage, volume);
+
     self.precentage.stringValue = [NSString stringWithFormat:@"%.0f%%", f_percentage];
+    self.touchbar_volume.stringValue = [NSString stringWithFormat:@"%.0f%%", f_percentage];
 
     [[NSUserDefaults standardUserDefaults] setFloat:f_percentage forKey:@"wallpapervolumeprecentage"];
     [[NSUserDefaults standardUserDefaults] setFloat:volume forKey:@"wallpapervolume"];
-
-
     [[NSUserDefaults standardUserDefaults] synchronize];
 
+    self.volumePopoverItem.collapsedRepresentationImage = [self volumeIconForValue:f_percentage];
 
-CFNotificationCenterPostNotification(
-    CFNotificationCenterGetDarwinNotifyCenter(),
-    CFSTR("com.live.wallpaper.volumeChanged"),
-    NULL, NULL, true
-);
-
-
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR("com.live.wallpaper.volumeChanged"),
+        NULL, NULL, true
+    );
 }
 
 - (BOOL)isFirstLaunch {
@@ -1058,11 +1062,21 @@ void launchDeamon(NSString *videoPath, NSString *imagePath) {
   NSString *daemonPath =
       [appPath stringByAppendingPathComponent:daemonRelativePath];
 
-  const char *daemonPathC = [daemonPath UTF8String];
-  const char *args[] = {daemonPathC, [videoPath UTF8String],
-                        [imagePath UTF8String], NULL};
 
-  pid_t pid;
+float volume = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
+
+const char *daemonPathC = [daemonPath UTF8String];
+const char *args[] = {
+    daemonPathC,
+    [videoPath UTF8String],
+    [imagePath UTF8String],
+    [volumeStr UTF8String],
+    NULL
+};
+
+
+   pid_t pid;
   int status =
       posix_spawn(&pid, daemonPathC, NULL, NULL, (char *const *)args, environ);
   if (status != 0) {
@@ -1165,9 +1179,21 @@ void launchDeamon(NSString *videoPath, NSString *imagePath) {
   touchBar.defaultItemIdentifiers = @[
     NSTouchBarItemIdentifierFlexibleSpace, @"com.livewallpaper.reload",
     @"com.livewallpaper.selectfolder", @"com.livewallpaper.openfolder",
-    @"com.livewallpaper.settings", NSTouchBarItemIdentifierFlexibleSpace
+    @"com.livewallpaper.settings", @"com.livewallpaper.volume", NSTouchBarItemIdentifierFlexibleSpace
   ];
   return touchBar;
+}
+
+- (NSImage *)volumeIconForValue:(double)value {
+    if (value <= 0.0) {
+        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputMuteTemplate];
+    } else if (value < 30.0) {
+        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeLowTemplate];
+    } else if (value < 70.0) {
+        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeMediumTemplate];
+    } else {
+        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeHighTemplate];
+    }
 }
 
 - (NSTouchBarItem *)touchBar:(NSTouchBar *)touchBar
@@ -1208,7 +1234,59 @@ void launchDeamon(NSString *videoPath, NSString *imagePath) {
                            action:@selector(showSettingsWindow:)];
     item.view = button;
     return item;
-  }
+  }else if ([identifier isEqualToString:@"com.livewallpaper.volume"]) {
+    
+    NSPopoverTouchBarItem *popoverItem =
+        [[NSPopoverTouchBarItem alloc] initWithIdentifier:identifier];
+
+    double currentValue = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolumeprecentage"];
+popoverItem.collapsedRepresentationImage = [self volumeIconForValue:currentValue];
+    popoverItem.showsCloseButton = YES;              
+
+    // Expanded bar
+    NSTouchBar *expandedTouchBar = [[NSTouchBar alloc] init];
+    expandedTouchBar.delegate = self;
+    expandedTouchBar.defaultItemIdentifiers = @[ @"com.livewallpaper.volume.slider" ];
+
+    popoverItem.popoverTouchBar = expandedTouchBar;
+    self.volumePopoverItem = popoverItem;
+    return popoverItem;
+}
+else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
+    NSCustomTouchBarItem *item =
+        [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
+
+    // Container
+    NSStackView *container = [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0, 280, 30)];
+    container.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    container.spacing = 8.0;
+
+    // Slider
+    NSSlider *slider = [[NSSlider alloc] initWithFrame:NSMakeRect(0, 0, 220, 20)];
+    slider.minValue = 0;
+    slider.maxValue = 100;
+    slider.doubleValue = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolumeprecentage"];
+    slider.target = self;
+    slider.action = @selector(sliderValueChanged:);
+
+    // Percentage label
+    NSTextField *percentageLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 40, 30)];
+    percentageLabel.stringValue = [NSString stringWithFormat:@"%.0f%%", slider.doubleValue];
+    percentageLabel.editable = NO;
+    percentageLabel.bezeled = NO;
+    percentageLabel.drawsBackground = NO;
+    percentageLabel.alignment = NSTextAlignmentCenter;
+    percentageLabel.font = [NSFont systemFontOfSize:12];
+
+    // Keep ref so we can update dynamically
+    self.touchbar_volume = percentageLabel;
+
+    [container addArrangedSubview:slider];
+    [container addArrangedSubview:percentageLabel];
+
+    item.view = container;
+    return item;
+}
   NSLog(@"No Item found on identifier");
   return nil;
 }

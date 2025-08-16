@@ -139,8 +139,8 @@
     [CATransaction commit];
 
     [window makeKeyAndOrderFront:nil];
-
-    player.volume = 1.0;
+    player.volume = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+    
     player.muted =NO;
 
     [_windows addObject:window];
@@ -169,6 +169,8 @@
     for (AVQueuePlayer *player in _players) {
         player.volume = volume;
     }
+    [[NSUserDefaults standardUserDefaults] setFloat:volume forKey:@"wallpapervolume"];
+
 }
 
 @end
@@ -184,15 +186,18 @@ static void VolumeChangedCallback(CFNotificationCenterRef center,
 }
 
 
+float volume;
 int main(int argc, const char *argv[]) {
   @autoreleasepool {
-    if (argc < 3) {
-      NSLog(@"Usage: %s <video.mp4> <frame_output.png>", argv[0]);
+    if (argc < 4) {
+      NSLog(@"Usage: %s <video.mp4> <frame_output.png> <volume>", argv[0]);
       return 1;
     }
 
     NSString *videoPath = [NSString stringWithUTF8String:argv[1]];
     NSString *framePath = [NSString stringWithUTF8String:argv[2]];
+    volume = atof(argv[3]);
+    [[NSUserDefaults standardUserDefaults] setFloat:volume forKey:@"wallpapervolume"];
 
     VideoWallpaperDaemon *daemon =
         [[VideoWallpaperDaemon alloc] initWithVideo:videoPath
