@@ -175,6 +175,20 @@ void checkFolderPath() {
     [defaults synchronize];
   }
 }
+
+NSString *getFolderPath(void) {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *path = [defaults stringForKey:@"WallpaperFolder"];
+
+    if (!path) {
+        path = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
+        [defaults setObject:path forKey:@"WallpaperFolder"];
+        [defaults synchronize];
+    }
+
+    return path;
+}
+
 - (BOOL)enableAppAsLoginItem {
   NSString *agentPath = [NSHomeDirectory()
       stringByAppendingPathComponent:
@@ -252,84 +266,167 @@ void checkFolderPath() {
   return thumbnailPath;
 }
 
-- (void)clearThumbnailCache {
-  NSFileManager *fileManager = [NSFileManager defaultManager];
-  NSString *thumbnailCachePath = [self thumbnailCachePath];
+- (void)clearCache {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
 
-
-  if ([fileManager fileExistsAtPath:thumbnailCachePath]) {
-    NSError *error = nil;
-    NSArray *files = [fileManager contentsOfDirectoryAtPath:thumbnailCachePath
-                                                      error:&error];
-
-    for (NSString *file in files) {
-      NSString *filePath =
-          [thumbnailCachePath stringByAppendingPathComponent:file];
-      [fileManager removeItemAtPath:filePath error:nil];
+    // --- Clear thumbnail cache ---
+    NSString *thumbnailCachePath = [self thumbnailCachePath];
+    if ([fileManager fileExistsAtPath:thumbnailCachePath]) {
+        NSError *error = nil;
+        NSArray *files = [fileManager contentsOfDirectoryAtPath:thumbnailCachePath
+                                                          error:&error];
+        if (!error) {
+            for (NSString *file in files) {
+                NSString *filePath = [thumbnailCachePath stringByAppendingPathComponent:file];
+                [fileManager removeItemAtPath:filePath error:nil];
+            }
+        }
     }
-  }
-}
 
-- (void)generateThumbnailsForFolder:(NSString *)folderPath {
-  NSFileManager *fileManager = [NSFileManager defaultManager];
-  NSString *thumbnailCachePath = [self thumbnailCachePath];
+    // --- Clear static wallpaper cache ---
+    NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
+                                                                  NSUserDomainMask,
+                                                                  YES) firstObject];
+    NSString *customDir = [appSupportDir stringByAppendingPathComponent:@"Livewall"];
 
-
-  NSLog(@"Thumbnail path %@", thumbnailCachePath);
-
-  // Create thumbnail folder if not exists
-  if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
-    [fileManager createDirectoryAtPath:thumbnailCachePath
+    // Ensure the directory exists
+    [fileManager createDirectoryAtPath:customDir
            withIntermediateDirectories:YES
                             attributes:nil
                                  error:nil];
-  }
 
-  NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
-                                                                error:nil];
-
-  for (NSString *filename in files) {
-    if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
-        ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
-      continue;
+    if ([fileManager fileExistsAtPath:customDir]) {
+        NSError *error = nil;
+        NSArray *files = [fileManager contentsOfDirectoryAtPath:customDir
+                                                          error:&error];
+        if (!error) {
+            for (NSString *file in files) {
+                NSString *filePath = [customDir stringByAppendingPathComponent:file];
+                [fileManager removeItemAtPath:filePath error:nil];
+            }
+        }
     }
-
-    NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
-    NSURL *videoURL = [NSURL fileURLWithPath:filePath];
-    AVAsset *asset = [AVAsset assetWithURL:videoURL];
-    AVAssetImageGenerator *imageGenerator =
-        [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    imageGenerator.appliesPreferredTrackTransform = YES;
-    imageGenerator.maximumSize = CGSizeMake(80, 45);
-
-    CMTime midpoint = CMTimeMakeWithSeconds(2.0, 600);
-    NSError *error = nil;
-    CGImageRef thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
-                                                      actualTime:NULL
-                                                           error:&error];
-
-    if (thumbImageRef && !error) {
-      NSImage *thumbImage =
-          [[NSImage alloc] initWithCGImage:thumbImageRef
-                                      size:NSMakeSize(160, 90)];
-      CGImageRelease(thumbImageRef);
-
-      NSData *imageData = [thumbImage TIFFRepresentation];
-      NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
-      NSData *jpgData = [rep representationUsingType:NSBitmapImageFileTypeJPEG
-                                          properties:@{}];
-      NSString *thumbName = [[filename stringByDeletingPathExtension] stringByAppendingPathExtension:@"jpg"];
-      NSString *thumbPath =
-          [thumbnailCachePath stringByAppendingPathComponent:thumbName];
-      [jpgData writeToFile:thumbPath atomically:YES];
-    } else {
-      NSLog(@"Error generating thumbnail for %@: %@", filename,
-            error.localizedDescription);
-    }
-  }
 }
 
+- (void)generateThumbnailsForFolder:(NSString *)folderPath {
+    NSLog(@"Generating Thumbnails...");
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *thumbnailCachePath = [self thumbnailCachePath];
+    
+    [self clearCache];
+    // Create thumbnail folder if not exists
+    if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
+        [fileManager createDirectoryAtPath:thumbnailCachePath
+               withIntermediateDirectories:YES
+                                attributes:nil
+                                     error:nil];
+    }
+
+    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
+                                                                  error:nil];
+
+    for (NSString *filename in files) {
+        if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
+            ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+            continue;
+        }
+
+        NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
+        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
+        AVAsset *asset = [AVAsset assetWithURL:videoURL];
+        AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
+        imageGenerator.appliesPreferredTrackTransform = YES;
+        imageGenerator.maximumSize = CGSizeMake(160, 90); // thumbnail size
+
+        Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
+        CMTime midpoint = CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
+
+        NSError *error = nil;
+        CGImageRef thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
+                                                          actualTime:NULL
+                                                               error:&error];
+
+        if (thumbImageRef && !error) {
+            NSImage *thumbImage = [[NSImage alloc] initWithCGImage:thumbImageRef
+                                                             size:NSMakeSize(160, 90)];
+            CGImageRelease(thumbImageRef);
+
+            // --- Determine and embed badge ---
+            NSString *badgeText = [self videoQualityBadgeForURL:videoURL]; // HD, 4K, SD
+            if (badgeText.length > 0) {
+                thumbImage = [self image:thumbImage withBadge:badgeText];
+            }
+
+            // Save thumbnail to JPEG
+            NSData *imageData = [thumbImage TIFFRepresentation];
+            NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
+            NSData *jpgData = [rep representationUsingType:NSBitmapImageFileTypeJPEG
+                                                properties:@{}];
+            NSString *thumbName = [[filename stringByDeletingPathExtension] stringByAppendingPathExtension:@"jpg"];
+            NSString *thumbPath = [thumbnailCachePath stringByAppendingPathComponent:thumbName];
+            [jpgData writeToFile:thumbPath atomically:YES];
+        } else {
+            NSLog(@"Error generating thumbnail for %@: %@", filename,
+                  error.localizedDescription);
+        }
+    }
+}
+- (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL {
+    AVAsset *asset = [AVAsset assetWithURL:videoURL];
+    AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+
+    if (!videoTrack) return @"";
+
+    CGSize resolution = CGSizeApplyAffineTransform(videoTrack.naturalSize, videoTrack.preferredTransform);
+    resolution.width = fabs(resolution.width);
+    resolution.height = fabs(resolution.height);
+
+    if (resolution.width >= 3840 || resolution.height >= 2160) return @"4K";
+    if (resolution.width >= 1920 || resolution.height >= 1080) return @"HD";
+    if (resolution.width >= 1280 || resolution.height >= 720) return @"SD";
+    return @"";
+}
+
+- (NSImage *)image:(NSImage *)image withBadge:(NSString *)badge {
+    NSImage *result = [image copy];
+    [result lockFocus];
+
+    // Badge text attributes
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:14], // smaller font
+        NSForegroundColorAttributeName: [NSColor whiteColor],
+        NSStrokeColorAttributeName: [NSColor blackColor],
+        NSStrokeWidthAttributeName: @-1
+    };
+
+    NSSize textSize = [badge sizeWithAttributes:attributes];
+
+    // Semi-transparent "blur-like" background
+    NSColor *bgColor = [[NSColor blackColor] colorWithAlphaComponent:0.55]; // softer
+    NSRect bgRect = NSMakeRect(result.size.width - textSize.width - 10,
+                               result.size.height - textSize.height - 8,
+                               textSize.width + 4,
+                               textSize.height + 2);
+    NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:bgRect xRadius:3 yRadius:3];
+    [bgColor setFill];
+    [path fill];
+
+    [bgColor setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:bgRect xRadius:3 yRadius:3] fill];
+
+    // Draw badge text
+    NSPoint textPoint = NSMakePoint(result.size.width - textSize.width - 8,
+                                    result.size.height - textSize.height - 6);
+    [badge drawAtPoint:textPoint withAttributes:attributes];
+
+    [result unlockFocus];
+    return result;
+}
+
+
+
 - (void)selectWallpaperFolder:(id)sender {
+  [NSApp activateIgnoringOtherApps:YES];
   [NSApp activateIgnoringOtherApps:YES];
 
   NSOpenPanel *panel = [NSOpenPanel openPanel];
@@ -352,8 +449,8 @@ void checkFolderPath() {
           [self.settingsWindow close];
           [self showSettingsWindow:nil];
         }
-        [self clearThumbnailCache];
-        [self generateThumbnailsForFolder:folderPath];
+        [self clearCache];
+          [self generateThumbnailsForFolder:getFolderPath()];
         [self reloadGrid:nil];
 
         NSLog(@"Selected wallpaper folder: %@", path);
@@ -446,6 +543,28 @@ NSTextField *CreateLabel(NSString *string) {
     [OptimizeVideos setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:OptimizeVideos];
   }
+    
+    {
+      LineModule *RandomVid = [[LineModule alloc] initWithFrame:NSZeroRect];
+      [RandomVid setTranslatesAutoresizingMaskIntoConstraints:NO];
+        
+        NSTextField* randomLable = CreateLabel(@"Random Wallpaper on Startup");
+
+        NSSwitch *randomToggle = [[NSSwitch alloc] initWithFrame:NSMakeRect(20, 20, 40, 20)];
+        
+        [randomToggle setTarget:self];
+        [randomToggle setAction:@selector(randomToggleChanged:)];
+
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        BOOL randomEnabled = [defaults boolForKey:@"random"];
+        randomToggle.state = randomEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+
+        [RandomVid add:randomLable];
+        [RandomVid add:randomToggle];
+
+      [RandomVid setTranslatesAutoresizingMaskIntoConstraints:NO];
+      [stackView addArrangedSubview:RandomVid];
+    }
   {
     LineModule *videoVolume = [[LineModule alloc] initWithFrame:NSZeroRect];
     [videoVolume setTranslatesAutoresizingMaskIntoConstraints:NO];
@@ -474,6 +593,21 @@ NSTextField *CreateLabel(NSString *string) {
     [videoVolume setTranslatesAutoresizingMaskIntoConstraints:NO];
     [stackView addArrangedSubview:videoVolume];
   }
+
+    {
+      LineModule *Clearcache = [[LineModule alloc] initWithFrame:NSZeroRect];
+      [Clearcache setTranslatesAutoresizingMaskIntoConstraints:NO];
+
+      NSTextField *clearcacheText = CreateLabel(@"Clear Cache");
+      NSButton *clearcacheButton =
+          CreateButton(@"Clear Cache 🗑️", self, @selector(clearCacheButton:));
+
+      [Clearcache add:clearcacheText];
+      [Clearcache add:clearcacheButton];
+
+      [Clearcache setTranslatesAutoresizingMaskIntoConstraints:NO];
+      [stackView addArrangedSubview:Clearcache];
+    }
 
   NSString *agentPath = [NSHomeDirectory()
       stringByAppendingPathComponent:
@@ -523,7 +657,15 @@ NSTextField *CreateLabel(NSString *string) {
       completionHandler:nil];
 }
 
+- (void)randomToggleChanged:(NSSwitch *)sender {
+    BOOL enabled = (sender.state == NSControlStateValueOn);
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"random"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+}
 
+- (void)clearCacheButton:(id)sender {
+    [self clearCache];
+}
 
 - (void)sliderValueChanged:(NSSlider *)sender {
     float f_percentage = sender.floatValue;
@@ -941,12 +1083,13 @@ NSTextField *CreateLabel(NSString *string) {
         btn.image = image;
       } else {
         NSLog(@"Thumbnail not found for %@", cacheImagePath);
+          [self generateThumbnailsForFolder:getFolderPath()];
       }
 
       btn.image = image;
       btn.bezelStyle = NSBezelStyleShadowlessSquare;
       btn.imageScaling = NSImageScaleProportionallyUpOrDown;
-      btn.title = filename;
+      btn.title = @"";
       btn.target = self;
       btn.action = @selector(handleButtonClick:);
       btn.toolTip = filename;
@@ -971,7 +1114,7 @@ NSTextField *CreateLabel(NSString *string) {
                                                           error:nil];
   if (contents.count == 0) {
     checkFolderPath();
-    [self generateThumbnailsForFolder:folderPath];
+      [self generateThumbnailsForFolder:getFolderPath()];
   }
   [self ReloadContent];
 
@@ -1138,10 +1281,10 @@ const char *args[] = {
 }
 
 - (void)handleButtonClick:(NSButton *)sender {
-  NSLog(@"Clicked: %@", sender.title);
+  NSLog(@"Clicked: %@", sender.toolTip);
 
   NSString *videoPath =
-      [folderPath stringByAppendingPathComponent:sender.title];
+      [folderPath stringByAppendingPathComponent:sender.toolTip];
 
   [self startWallpaperWithPath:videoPath];
 }
@@ -1456,6 +1599,13 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
            keyEquivalent:@"s"];
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
+    
+    if (buttons.count > 0 && [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
+        NSLog(@"Loading Random Wallpaper...");
+        NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+        NSButton *randomButton = buttons[randomIndex];
+        [randomButton performClick:nil];
+    }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {

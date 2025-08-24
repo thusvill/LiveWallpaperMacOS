@@ -32,59 +32,71 @@
 
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath {
-  self = [super init];
-  if (self) {
-    _windows = [NSMutableArray array];
-    _players = [NSMutableArray array];
-    _playerLayers = [NSMutableArray array];
-    _loopers = [NSMutableArray array];
+    self = [super init];
+    if (self) {
+        _windows = [NSMutableArray array];
+        _players = [NSMutableArray array];
+        _playerLayers = [NSMutableArray array];
+        _loopers = [NSMutableArray array];
 
-    if (framePath && videoPath) {
-      AVAsset *asset = [AVAsset assetWithURL:[NSURL fileURLWithPath:videoPath]];
-      AVAssetImageGenerator *imageGenerator =
-          [[AVAssetImageGenerator alloc] initWithAsset:asset];
-      imageGenerator.appliesPreferredTrackTransform = YES;
-      CMTime time = CMTimeMakeWithSeconds(1.0, 600);
+        if (framePath && videoPath) {
+            NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
+            AVAsset *asset = [AVAsset assetWithURL:videoURL];
 
-      [imageGenerator
-          generateCGImagesAsynchronouslyForTimes:@[ [NSValue
-                                                     valueWithCMTime:time] ]
-                               completionHandler:^(
-                                   CMTime requestedTime, CGImageRef cgImage,
-                                   CMTime actualTime,
-                                   AVAssetImageGeneratorResult result,
-                                   NSError *error) {
-                                 if (result == AVAssetImageGeneratorSucceeded &&
-                                     cgImage) {
-                                   NSBitmapImageRep *bitmapRep =
-                                       [[NSBitmapImageRep alloc]
-                                           initWithCGImage:cgImage];
-                                   NSData *data =
-                                       [bitmapRep representationUsingType:
-                                                      NSBitmapImageFileTypePNG
-                                                               properties:@{}];
-                                   [data writeToFile:framePath atomically:YES];
-                                 } else {
-                                   NSLog(@"Frame extraction failed: %@",
-                                         error.localizedDescription);
-                                 }
-                               }];
+            if ([[asset tracksWithMediaType:AVMediaTypeVideo] count] == 0) {
+                NSLog(@"No video tracks found in %@", videoPath);
+            } else {
+                AVAssetImageGenerator *imageGenerator =
+                    [[AVAssetImageGenerator alloc] initWithAsset:asset];
+                imageGenerator.appliesPreferredTrackTransform = YES;
+
+                // Full resolution (4K)
+                imageGenerator.maximumSize = CGSizeMake(3840, 2160);
+
+                // Zero tolerance to get exact midpoint
+                imageGenerator.requestedTimeToleranceBefore = kCMTimeZero;
+                imageGenerator.requestedTimeToleranceAfter  = kCMTimeZero;
+
+                // Calculate midpoint
+                Float64 midpointSec = CMTimeGetSeconds(asset.duration) / 2.0;
+                CMTime midpoint = CMTimeMakeWithSeconds(midpointSec, asset.duration.timescale);
+                NSLog(@"Scheduled midpoint extraction at %f seconds", midpointSec);
+
+                // Perform extraction after run loop starts
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSError *error = nil;
+                    CMTime actualTime;
+                    CGImageRef cgImage = [imageGenerator copyCGImageAtTime:midpoint
+                                                                 actualTime:&actualTime
+                                                                      error:&error];
+                    if (cgImage) {
+                        NSBitmapImageRep *bitmapRep = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
+                        NSData *data = [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+                        [data writeToFile:framePath atomically:YES];
+                        CGImageRelease(cgImage);
+                        NSLog(@"Saved midpoint frame at %f sec to %@", CMTimeGetSeconds(actualTime), framePath);
+                    } else {
+                        NSLog(@"Frame extraction failed: %@", error.localizedDescription);
+                    }
+                });
+            }
+        }
+
+        // Observe screen lock/unlock
+        NSDistributedNotificationCenter *center = [NSDistributedNotificationCenter defaultCenter];
+        [center addObserver:self
+                   selector:@selector(screenLocked:)
+                       name:@"com.apple.screenIsLocked"
+                     object:nil];
+        [center addObserver:self
+                   selector:@selector(screenUnlocked:)
+                       name:@"com.apple.screenIsUnlocked"
+                     object:nil];
+
+        // Setup wallpaper with video
+        [self setupWallpaperWithVideo:videoPath];
     }
-
-    NSDistributedNotificationCenter *center =
-        [NSDistributedNotificationCenter defaultCenter];
-    [center addObserver:self
-               selector:@selector(screenLocked:)
-                   name:@"com.apple.screenIsLocked"
-                 object:nil];
-    [center addObserver:self
-               selector:@selector(screenUnlocked:)
-                   name:@"com.apple.screenIsUnlocked"
-                 object:nil];
-
-    [self setupWallpaperWithVideo:videoPath];
-  }
-  return self;
+    return self;
 }
 - (void)setupWallpaperWithVideo:(NSString *)videoPath {
   NSArray<NSScreen *> *screens = [NSScreen screens];
