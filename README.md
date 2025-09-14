@@ -1,5 +1,5 @@
 > [!NOTE]
-> ## I'll be away for 5 months, so the repo won't update frequently.
+> ## I’ll get back to checking and updating this repo after December — Sorry for the delay!
 
 # LiveWallpaper App for MacOS 15+
 
