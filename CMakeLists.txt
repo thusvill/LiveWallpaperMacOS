@@ -2,13 +2,19 @@ cmake_minimum_required(VERSION 3.16)
 
 project(LiveWallpaper LANGUAGES C CXX OBJC OBJCXX)
 
-set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
+set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 
-add_executable(LiveWallpaper MACOSX_BUNDLE LiveWallpaper.mm LineModule.m LineModule.h)
+set(MACOSX_BUNDLE_ICON_FILE Assets.car)
+set(app_icon_macos "${CMAKE_SOURCE_DIR}/Assets.car")
+set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+
+
+add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h)
+
 
 
 

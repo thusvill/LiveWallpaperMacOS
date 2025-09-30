@@ -5,6 +5,9 @@
   <key>CFBundleExecutable</key>
   <string>${EXECUTABLE_NAME}</string>
 
+<key>CFBundleIconName</key>
+<string>LiveWallpaper</string>
+
   <key>CFBundleIdentifier</key>
   <string>com.biosthusvill.LiveWallpaper</string>
 
@@ -24,5 +27,9 @@
 
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+
+  <key>NSRequiresAquaSystemAppearance</key>
+  <false/>
+
 </dict>
 </plist>

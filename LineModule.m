@@ -52,7 +52,14 @@
   _maxHeight = 0;
 
   for (NSView *view in self.subviews) {
-    [view sizeToFit];
+      for (NSView *view in self.subviews) {
+          NSSize size = [view fittingSize];
+          [view setFrameSize:size];
+
+          if (size.height > _maxHeight)
+              _maxHeight = size.height;
+      }
+
 
     NSSize size = view.frame.size;
     if (size.height > _maxHeight)

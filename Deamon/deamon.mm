@@ -81,7 +81,6 @@
                 });
             }
         }
-
         // Observe screen lock/unlock
         NSDistributedNotificationCenter *center = [NSDistributedNotificationCenter defaultCenter];
         [center addObserver:self
