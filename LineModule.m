@@ -18,17 +18,15 @@
 #import "LineModule.h"
 
 @implementation LineModule {
-  CGFloat _currentX;
-  CGFloat _maxHeight;
   BOOL _needsLayoutUpdate;
+  NSSize _cachedIntrinsicSize;
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
   self = [super initWithFrame:frame];
   if (self) {
-    _currentX = 0;
-    _maxHeight = 0;
     _needsLayoutUpdate = YES;
+    _cachedIntrinsicSize = NSZeroSize;
   }
   return self;
 }
@@ -43,45 +41,56 @@
   if (_needsLayoutUpdate) {
     [self recalculateLayout];
   }
-  return NSMakeSize(_currentX, _maxHeight);
+  return _cachedIntrinsicSize;
 }
 
-
 - (void)recalculateLayout {
-  _currentX = 0;
-  _maxHeight = 0;
+  CGFloat currentX = 0.0;
+  CGFloat maxHeight = 0.0;
 
+  // First pass: determine ideal sizes.
+  NSMutableArray<NSValue *> *sizes =
+      [NSMutableArray arrayWithCapacity:self.subviews.count];
   for (NSView *view in self.subviews) {
-      for (NSView *view in self.subviews) {
-          NSSize size = [view fittingSize];
-          [view setFrameSize:size];
-
-          if (size.height > _maxHeight)
-              _maxHeight = size.height;
-      }
-
-
-    NSSize size = view.frame.size;
-    if (size.height > _maxHeight)
-      _maxHeight = size.height;
+    NSSize size = [view fittingSize];
+    if (size.width <= 0 || size.height <= 0) {
+      size = view.frame.size;
+    }
+    [sizes addObject:[NSValue valueWithSize:size]];
+    if (size.height > maxHeight) {
+      maxHeight = size.height;
+    }
   }
 
+  // Second pass: position views.
+  NSUInteger idx = 0;
   for (NSView *view in self.subviews) {
-    NSSize size = view.frame.size;
-    CGFloat yOffset = (_maxHeight - size.height) / 2.0;
-    [view setFrameOrigin:NSMakePoint(_currentX, yOffset)];
-    _currentX += size.width + 8;
+    NSSize size = sizes[idx].sizeValue;
+    [view setFrameSize:size];
+
+    CGFloat yOffset = maxHeight > 0 ? (maxHeight - size.height) / 2.0 : 0.0;
+    [view setFrameOrigin:NSMakePoint(currentX, yOffset)];
+    currentX += size.width;
+    if (idx < self.subviews.count - 1) {
+      currentX += 8.0; // horizontal spacing between entries
+    }
+    idx++;
   }
 
-  [self setFrameSize:NSMakeSize(_currentX, _maxHeight)];
+  NSSize newSize = NSMakeSize(currentX, maxHeight);
+  if (!NSEqualSizes(newSize, _cachedIntrinsicSize)) {
+    _cachedIntrinsicSize = newSize;
+    [self invalidateIntrinsicContentSize];
+  }
+
   _needsLayoutUpdate = NO;
 }
 
-
 - (void)layout {
   [super layout];
-  _needsLayoutUpdate = YES;
-  [self recalculateLayout];
+  if (_needsLayoutUpdate) {
+    [self recalculateLayout];
+  }
 }
 
 
@@ -89,10 +98,11 @@
   if (!view) return;
 
   [self addSubview:view];
+  _cachedIntrinsicSize = NSZeroSize;
   _needsLayoutUpdate = YES;
 
-  [self invalidateIntrinsicContentSize];
   [self setNeedsLayout:YES];
+  [self invalidateIntrinsicContentSize];
 }
 
 - (BOOL)mouseDownCanMoveWindow {
