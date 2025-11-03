@@ -47,7 +47,23 @@
             NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
             AVAsset *asset = [AVAsset assetWithURL:videoURL];
 
-            if ([[asset tracksWithMediaType:AVMediaTypeVideo] count] == 0) {
+            // Check for video tracks with compatibility
+            __block NSArray<AVAssetTrack *> *videoTracks = nil;
+            if (@available(macOS 15.0, *)) {
+                dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+                [asset loadTracksWithMediaType:AVMediaTypeVideo completionHandler:^(NSArray<AVAssetTrack *> * _Nullable tracks, NSError * _Nullable error) {
+                    videoTracks = tracks;
+                    dispatch_semaphore_signal(semaphore);
+                }];
+                dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+            } else {
+                #pragma clang diagnostic push
+                #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+                #pragma clang diagnostic pop
+            }
+
+            if (videoTracks.count == 0) {
                 NSLog(@"No video tracks found in %@", videoPath);
             } else {
                 AVAssetImageGenerator *imageGenerator =
@@ -68,11 +84,33 @@
 
                 // Perform extraction after run loop starts
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    NSError *error = nil;
-                    CMTime actualTime;
-                    CGImageRef cgImage = [imageGenerator copyCGImageAtTime:midpoint
-                                                                 actualTime:&actualTime
-                                                                      error:&error];
+                    __block CGImageRef cgImage = NULL;
+                    __block CMTime actualTime = kCMTimeZero;
+                    __block NSError *error = nil;
+                    
+                    if (@available(macOS 15.0, *)) {
+                        // Use new async API
+                        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+                        [imageGenerator generateCGImageAsynchronouslyForTime:midpoint completionHandler:^(CGImageRef  _Nullable image, CMTime time, NSError * _Nullable genError) {
+                            if (image && !genError) {
+                                cgImage = CGImageRetain(image);
+                                actualTime = time;
+                            } else {
+                                error = genError;
+                            }
+                            dispatch_semaphore_signal(semaphore);
+                        }];
+                        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+                    } else {
+                        // Use deprecated API
+                        #pragma clang diagnostic push
+                        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                        cgImage = [imageGenerator copyCGImageAtTime:midpoint
+                                                         actualTime:&actualTime
+                                                              error:&error];
+                        #pragma clang diagnostic pop
+                    }
+                    
                     if (cgImage) {
                         NSBitmapImageRep *bitmapRep = [[NSBitmapImageRep alloc] initWithCGImage:cgImage];
                         NSData *data = [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
