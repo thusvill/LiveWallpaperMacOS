@@ -4,7 +4,7 @@
 # LiveWallpaper App for MacOS 15+
 
 
-![Roller](https://github.com/user-attachments/assets/bc0eba9a-2e5a-4c2c-99cb-c0160c3312bb)
+![Roller](./asset/livewall.png)
 
 This is an open-source live wallpaper applicationn for MacOS 15+
 
