@@ -25,9 +25,11 @@
 @property(strong) NSMutableArray<AVPlayerLayer *> *playerLayers;
 @property(strong) NSMutableArray<AVPlayerLooper *> *loopers;
 @property(nonatomic, assign) BOOL autoPauseEnabled;
-@property(nonatomic, assign) BOOL isPlayingBeforePause;
+@property(nonatomic, assign) BOOL wasPlayingBeforeSleep;
+@property(strong) NSTimer *checkTimer;
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath;
+- (void)checkAndUpdatePlaybackState;
 @end
 
 @implementation VideoWallpaperDaemon
@@ -41,7 +43,14 @@
         _playerLayers = [NSMutableArray array];
         _loopers = [NSMutableArray array];
         _autoPauseEnabled = [[NSUserDefaults standardUserDefaults] boolForKey:@"pauseOnAppFocus"];
-        _isPlayingBeforePause = YES;
+        _wasPlayingBeforeSleep = YES;
+        
+        // Start a timer to periodically check if we should play/pause (for minimized windows detection)
+        _checkTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                       target:self
+                                                     selector:@selector(checkAndUpdatePlaybackState)
+                                                     userInfo:nil
+                                                      repeats:YES];
 
         if (framePath && videoPath) {
             NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
@@ -212,44 +221,108 @@
 }
 
 - (void)screenLocked:(NSNotification *)note {
+  // Save current playback state
+  self.wasPlayingBeforeSleep = (_players.firstObject.rate > 0);
+  NSLog(@"[Daemon] Screen locked - saving playback state: %@", self.wasPlayingBeforeSleep ? @"playing" : @"paused");
+  
   for (AVQueuePlayer *player in _players) {
     [player pause];
   }
 }
 
 - (void)screenUnlocked:(NSNotification *)note {
-  for (AVQueuePlayer *player in _players) {
-    [player play];
+  NSLog(@"[Daemon] Screen unlocked");
+  
+  // Resume if it was playing before sleep
+  if (self.wasPlayingBeforeSleep) {
+    NSLog(@"[Daemon] Resuming playback after screen unlock");
+    for (AVQueuePlayer *player in _players) {
+      [player play];
+    }
+    // Let the timer check if it should pause based on current app state
   }
 }
 
-- (void)activeApplicationChanged:(NSNotification *)notification {
+- (void)checkAndUpdatePlaybackState {
     if (!self.autoPauseEnabled) {
         return;
     }
     
-    NSRunningApplication *app = [[notification userInfo] objectForKey:NSWorkspaceApplicationKey];
+    BOOL shouldPlay = [self shouldPlayWallpaper];
+    BOOL isCurrentlyPlaying = (_players.firstObject.rate > 0);
     
-    // Check if Finder (desktop) is active or if it's our LiveWallpaper app
-    BOOL isDesktopActive = [app.bundleIdentifier isEqualToString:@"com.apple.finder"] ||
-                           [app.bundleIdentifier isEqualToString:@"com.biosthusvill.LiveWallpaper"];
-    
-    if (isDesktopActive) {
-        // Resume playback if it was playing before
-        if (self.isPlayingBeforePause) {
-            NSLog(@"[Daemon] Desktop/Finder active - resuming playback");
-            for (AVQueuePlayer *player in _players) {
-                [player play];
-            }
+    if (shouldPlay && !isCurrentlyPlaying) {
+        NSLog(@"[Daemon] Timer: Starting playback - desktop is visible");
+        for (AVQueuePlayer *player in _players) {
+            [player play];
         }
-    } else {
-        // An app window is active - pause to save power
-        NSLog(@"[Daemon] App %@ active - pausing playback to conserve power", app.localizedName);
-        self.isPlayingBeforePause = (_players.firstObject.rate > 0);
+    } else if (!shouldPlay && isCurrentlyPlaying) {
+        NSLog(@"[Daemon] Timer: Pausing playback - app window is visible");
         for (AVQueuePlayer *player in _players) {
             [player pause];
         }
     }
+}
+
+- (BOOL)shouldPlayWallpaper {
+    // If auto-pause is disabled, always play
+    if (!self.autoPauseEnabled) {
+        return YES;
+    }
+    
+    NSRunningApplication *activeApp = [[NSWorkspace sharedWorkspace] frontmostApplication];
+    
+    // Check if Finder or our app is active - always play
+    if ([activeApp.bundleIdentifier isEqualToString:@"com.apple.finder"] ||
+        [activeApp.bundleIdentifier isEqualToString:@"com.biosthusvill.LiveWallpaper"]) {
+        return YES;
+    }
+    
+    // Check if the active app is hidden (Cmd+H)
+    if (activeApp.isHidden) {
+        return YES;
+    }
+    
+    // Get all on-screen windows (this excludes minimized windows)
+    CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
+    BOOL hasVisibleAppWindow = NO;
+    
+    if (windowList) {
+        NSArray *windows = (__bridge NSArray *)windowList;
+        pid_t activePID = activeApp.processIdentifier;
+        
+        for (NSDictionary *window in windows) {
+            NSNumber *ownerPID = window[(NSString *)kCGWindowOwnerPID];
+            NSNumber *layer = window[(NSString *)kCGWindowLayer];
+            
+            // Check if this window belongs to the active app and is a normal window (layer 0)
+            if (ownerPID && [ownerPID intValue] == activePID && 
+                layer && [layer intValue] == 0) {
+                
+                // Check if window has meaningful bounds
+                NSDictionary *bounds = window[(NSString *)kCGWindowBounds];
+                if (bounds) {
+                    CGRect rect;
+                    CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)bounds, &rect);
+                    
+                    // If window is reasonably sized, it's visible
+                    if (rect.size.width > 50 && rect.size.height > 50) {
+                        hasVisibleAppWindow = YES;
+                        break;
+                    }
+                }
+            }
+        }
+        CFRelease(windowList);
+    }
+    
+    // Play if no visible windows from the active app
+    return !hasVisibleAppWindow;
+}
+
+- (void)activeApplicationChanged:(NSNotification *)notification {
+    // Immediately check when app switches
+    [self checkAndUpdatePlaybackState];
 }
 
 - (void)setAutoPauseEnabled:(BOOL)enabled {
@@ -260,10 +333,13 @@
     NSLog(@"[Daemon] Auto-pause %@", enabled ? @"enabled" : @"disabled");
     
     // If disabled, ensure playback resumes
-    if (!enabled && self.isPlayingBeforePause) {
+    if (!enabled) {
         for (AVQueuePlayer *player in _players) {
             [player play];
         }
+    } else {
+        // If enabled, immediately check current state
+        [self checkAndUpdatePlaybackState];
     }
 }
 

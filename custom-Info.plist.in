@@ -6,10 +6,10 @@
   <string>${EXECUTABLE_NAME}</string>
 
 <key>CFBundleIconFile</key>
-<string>AppIcon</string>
+<string>livewall</string>
 
 <key>CFBundleIconName</key>
-<string>AppIcon</string>
+<string>livewall</string>
 
   <key>CFBundleIdentifier</key>
   <string>com.biosthusvill.LiveWallpaper</string>
