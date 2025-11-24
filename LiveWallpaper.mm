@@ -1228,7 +1228,7 @@ NSTextField *CreateLabel(NSString *string) {
 void killAllDaemons() {
   NSTask *killTask = [[NSTask alloc] init];
   killTask.launchPath = @"/usr/bin/killall";
-  killTask.arguments = @[ @"wallpaperdeamon" ];
+  killTask.arguments = @[ @"wallpaperdaemon" ];
   [killTask launch];
   [killTask waitUntilExit];
 
@@ -1240,8 +1240,8 @@ void killAllDaemons() {
   }
 }
 extern char **environ;
-void launchDeamon(NSString *videoPath, NSString *imagePath) {
-  NSString *daemonRelativePath = @"Contents/MacOS/wallpaperdeamon";
+void launchDaemon(NSString *videoPath, NSString *imagePath) {
+  NSString *daemonRelativePath = @"Contents/MacOS/wallpaperdaemon";
   NSString *appPath = [[NSBundle mainBundle] bundlePath];
   NSString *daemonPath =
       [appPath stringByAppendingPathComponent:daemonRelativePath];
@@ -1311,7 +1311,7 @@ const char *args[] = {
 
   NSLog(@"videoPath = %@", videoPath);
 
-  launchDeamon(videoPath, imagePath);
+  launchDaemon(videoPath, imagePath);
   LogMemoryUsage();
 
   dispatch_after(
