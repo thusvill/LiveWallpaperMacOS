@@ -511,15 +511,27 @@ NSString *getFolderPath(void) {
         [defaults setObject:path forKey:@"WallpaperFolder"];
         [defaults synchronize];
         folderPath = path;
+
         if (self.settingsWindow) {
           [self.settingsWindow close];
           [self showSettingsWindow:nil];
         }
-        [self clearCache];
-        [self generateThumbnailsForFolder:getFolderPath()];
-        [self reloadGrid:nil];
 
-        NSLog(@"Selected wallpaper folder: %@", path);
+        // Native GCD - no C++ std::function issues
+        dispatch_queue_t bgQueue =
+            dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+        dispatch_async(bgQueue, ^{
+          // Background: heavy I/O work
+          [self clearCache];
+          [self generateThumbnailsForFolder:getFolderPath()];
+          NSLog(@"Background processing complete: %@", path);
+
+          dispatch_async(dispatch_get_main_queue(), ^{
+            // Main thread: UI update only
+            [self reloadGrid:nil];
+            NSLog(@"UI refreshed: %@", path);
+          });
+        });
       }
     }
   }];
@@ -653,6 +665,28 @@ NSTextField *CreateLabel(NSString *string) {
     randomToggle.action = @selector(randomToggleChanged:);
     randomToggle.state =
         [[NSUserDefaults standardUserDefaults] boolForKey:@"random"]
+            ? NSControlStateValueOn
+            : NSControlStateValueOff;
+
+    [randomVid add:randomLabel];
+    [randomVid add:randomToggle];
+    [stackView addArrangedSubview:randomVid];
+  }
+
+  // --- Random Wallpaper On Lock Toggle ---
+  {
+    LineModule *randomVid = [[LineModule alloc] initWithFrame:NSZeroRect];
+    randomVid.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *randomLabel = CreateLabel(@"Random Wallpaper on Unlock");
+    randomLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSSwitch *randomToggle = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    randomToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    randomToggle.target = self;
+    randomToggle.action = @selector(randomUnlockToggleChanged:);
+    randomToggle.state =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"]
             ? NSControlStateValueOn
             : NSControlStateValueOff;
 
@@ -799,6 +833,13 @@ NSTextField *CreateLabel(NSString *string) {
 - (void)randomToggleChanged:(NSSwitch *)sender {
   BOOL enabled = (sender.state == NSControlStateValueOn);
   [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"random"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)randomUnlockToggleChanged:(NSSwitch *)sender {
+  BOOL enabled = (sender.state == NSControlStateValueOn);
+  [[NSUserDefaults standardUserDefaults] setBool:enabled
+                                          forKey:@"random_unlock"];
   [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
@@ -1657,6 +1698,14 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
                 handleSpaceChange(note);
               }];
 
+  [[[NSWorkspace sharedWorkspace] notificationCenter]
+      addObserverForName:NSWorkspaceScreensDidWakeNotification
+                  object:nil
+                   queue:[NSOperationQueue mainQueue]
+              usingBlock:^(NSNotification *_Nonnull note) {
+                [self handleScreenUnlock:note];
+              }];
+
   NSRect frame = NSMakeRect(0, 0, 800, 600);
   self.blurWindow = [[NSWindow alloc]
       initWithContentRect:frame
@@ -1861,6 +1910,16 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
     NSButton *randomButton = buttons[randomIndex];
     [randomButton performClick:nil];
   }
+}
+
+- (void)handleScreenUnlock:(NSNotification *)notification {
+    NSLog(@"🔓 Screen unlocked");
+    if (buttons.count > 0 && [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"]) {
+        NSLog(@"Loading Random Wallpaper...");
+        NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+        NSButton *randomButton = buttons[randomIndex];
+        [randomButton performClick:nil];
+    }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
