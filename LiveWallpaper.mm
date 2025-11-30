@@ -148,10 +148,9 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 
 @property(strong) NSWindow *settingsWindow;
 
-@property (strong) NSTextField *precentage;
-@property (strong) NSTextField *touchbar_volume;
-@property (strong) NSPopoverTouchBarItem *volumePopoverItem;
-
+@property(strong) NSTextField *precentage;
+@property(strong) NSTextField *touchbar_volume;
+@property(strong) NSPopoverTouchBarItem *volumePopoverItem;
 
 @end
 
@@ -178,19 +177,20 @@ void checkFolderPath() {
 }
 
 NSString *getFolderPath(void) {
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *path = [defaults stringForKey:@"WallpaperFolder"];
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  NSString *path = [defaults stringForKey:@"WallpaperFolder"];
 
-    if (!path) {
-        path = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
-        [defaults setObject:path forKey:@"WallpaperFolder"];
-        [defaults synchronize];
-    }
+  if (!path) {
+    path = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
+    [defaults setObject:path forKey:@"WallpaperFolder"];
+    [defaults synchronize];
+  }
 
-    return path;
+  return path;
 }
 - (void)screensDidChange:(NSNotification *)note {
-    [self startWallpaperWithPath:[NSString stringWithUTF8String:g_videoPath.c_str()]];
+  [self startWallpaperWithPath:[NSString
+                                   stringWithUTF8String:g_videoPath.c_str()]];
 }
 
 - (BOOL)enableAppAsLoginItem {
@@ -271,169 +271,225 @@ NSString *getFolderPath(void) {
 }
 
 - (void)resetUserData {
-    NSString *appDomain = [[NSBundle mainBundle] bundleIdentifier];
-    [[NSUserDefaults standardUserDefaults] removePersistentDomainForName:appDomain];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+  NSString *appDomain = [[NSBundle mainBundle] bundleIdentifier];
+  [[NSUserDefaults standardUserDefaults]
+      removePersistentDomainForName:appDomain];
+  [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 - (void)clearCache {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSFileManager *fileManager = [NSFileManager defaultManager];
 
-    // --- Clear thumbnail cache ---
-    NSString *thumbnailCachePath = [self thumbnailCachePath];
-    if ([fileManager fileExistsAtPath:thumbnailCachePath]) {
-        NSError *error = nil;
-        NSArray *files = [fileManager contentsOfDirectoryAtPath:thumbnailCachePath
-                                                          error:&error];
-        if (!error) {
-            for (NSString *file in files) {
-                NSString *filePath = [thumbnailCachePath stringByAppendingPathComponent:file];
-                [fileManager removeItemAtPath:filePath error:nil];
-            }
-        }
+  // --- Clear thumbnail cache ---
+  NSString *thumbnailCachePath = [self thumbnailCachePath];
+  if ([fileManager fileExistsAtPath:thumbnailCachePath]) {
+    NSError *error = nil;
+    NSArray *files = [fileManager contentsOfDirectoryAtPath:thumbnailCachePath
+                                                      error:&error];
+    if (!error) {
+      for (NSString *file in files) {
+        NSString *filePath =
+            [thumbnailCachePath stringByAppendingPathComponent:file];
+        [fileManager removeItemAtPath:filePath error:nil];
+      }
     }
+  }
 
-    // --- Clear static wallpaper cache ---
-    NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
-                                                                  NSUserDomainMask,
-                                                                  YES) firstObject];
-    NSString *customDir = [appSupportDir stringByAppendingPathComponent:@"Livewall"];
+  // --- Clear static wallpaper cache ---
+  NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(
+      NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
+  NSString *customDir =
+      [appSupportDir stringByAppendingPathComponent:@"Livewall"];
 
-    // Ensure the directory exists
-    [fileManager createDirectoryAtPath:customDir
-           withIntermediateDirectories:YES
-                            attributes:nil
-                                 error:nil];
+  // Ensure the directory exists
+  [fileManager createDirectoryAtPath:customDir
+         withIntermediateDirectories:YES
+                          attributes:nil
+                               error:nil];
 
-    if ([fileManager fileExistsAtPath:customDir]) {
-        NSError *error = nil;
-        NSArray *files = [fileManager contentsOfDirectoryAtPath:customDir
-                                                          error:&error];
-        if (!error) {
-            for (NSString *file in files) {
-                NSString *filePath = [customDir stringByAppendingPathComponent:file];
-                [fileManager removeItemAtPath:filePath error:nil];
-            }
-        }
+  if ([fileManager fileExistsAtPath:customDir]) {
+    NSError *error = nil;
+    NSArray *files = [fileManager contentsOfDirectoryAtPath:customDir
+                                                      error:&error];
+    if (!error) {
+      for (NSString *file in files) {
+        NSString *filePath = [customDir stringByAppendingPathComponent:file];
+        [fileManager removeItemAtPath:filePath error:nil];
+      }
     }
+  }
 }
 
 - (void)generateThumbnailsForFolder:(NSString *)folderPath {
-    NSLog(@"Generating Thumbnails...");
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSString *thumbnailCachePath = [self thumbnailCachePath];
-    
-    [self clearCache];
-    // Create thumbnail folder if not exists
-    if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
-        [fileManager createDirectoryAtPath:thumbnailCachePath
-               withIntermediateDirectories:YES
-                                attributes:nil
-                                     error:nil];
+  NSLog(@"Generating Thumbnails...");
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSString *thumbnailCachePath = [self thumbnailCachePath];
+
+  [self clearCache];
+  // Create thumbnail folder if not exists
+  if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
+    [fileManager createDirectoryAtPath:thumbnailCachePath
+           withIntermediateDirectories:YES
+                            attributes:nil
+                                 error:nil];
+  }
+
+  NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
+                                                                error:nil];
+
+  for (NSString *filename in files) {
+    if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
+        ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+      continue;
     }
 
-    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
-                                                                  error:nil];
+    NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
+    NSURL *videoURL = [NSURL fileURLWithPath:filePath];
+    AVAsset *asset = [AVAsset assetWithURL:videoURL];
+    AVAssetImageGenerator *imageGenerator =
+        [[AVAssetImageGenerator alloc] initWithAsset:asset];
+    imageGenerator.appliesPreferredTrackTransform = YES;
+    imageGenerator.maximumSize = CGSizeMake(160, 90); // thumbnail size
 
-    for (NSString *filename in files) {
-        if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
-            ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
-            continue;
-        }
+    Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
+    CMTime midpoint =
+        CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
 
-        NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
-        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
-        AVAsset *asset = [AVAsset assetWithURL:videoURL];
-        AVAssetImageGenerator *imageGenerator = [[AVAssetImageGenerator alloc] initWithAsset:asset];
-        imageGenerator.appliesPreferredTrackTransform = YES;
-        imageGenerator.maximumSize = CGSizeMake(160, 90); // thumbnail size
+    __block CGImageRef thumbImageRef = NULL;
+    __block NSError *error = nil;
 
-        Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
-        CMTime midpoint = CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
-
-        NSError *error = nil;
-        CGImageRef thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
-                                                          actualTime:NULL
-                                                               error:&error];
-
-        if (thumbImageRef && !error) {
-            NSImage *thumbImage = [[NSImage alloc] initWithCGImage:thumbImageRef
-                                                             size:NSMakeSize(160, 90)];
-            CGImageRelease(thumbImageRef);
-
-            // --- Determine and embed badge ---
-            NSString *badgeText = [self videoQualityBadgeForURL:videoURL]; // HD, 4K, SD
-            if (badgeText.length > 0) {
-                thumbImage = [self image:thumbImage withBadge:badgeText];
-            }
-
-            // Save thumbnail to JPEG
-            NSData *imageData = [thumbImage TIFFRepresentation];
-            NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
-            NSData *jpgData = [rep representationUsingType:NSBitmapImageFileTypeJPEG
-                                                properties:@{}];
-            NSString *thumbName = [[filename stringByDeletingPathExtension] stringByAppendingPathExtension:@"jpg"];
-            NSString *thumbPath = [thumbnailCachePath stringByAppendingPathComponent:thumbName];
-            [jpgData writeToFile:thumbPath atomically:YES];
-        } else {
-            NSLog(@"Error generating thumbnail for %@: %@", filename,
-                  error.localizedDescription);
-        }
+    if (@available(macOS 15.0, *)) {
+      // Use new async API for macOS 15+
+      dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+      [imageGenerator
+          generateCGImageAsynchronouslyForTime:midpoint
+                             completionHandler:^(CGImageRef _Nullable image,
+                                                 CMTime actualTime,
+                                                 NSError *_Nullable genError) {
+                               if (image && !genError) {
+                                 thumbImageRef = CGImageRetain(image);
+                               } else {
+                                 error = genError;
+                               }
+                               dispatch_semaphore_signal(semaphore);
+                             }];
+      dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+    } else {
+// Use deprecated API for older macOS versions
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+      thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
+                                             actualTime:NULL
+                                                  error:&error];
+#pragma clang diagnostic pop
     }
+
+    if (thumbImageRef && !error) {
+      NSImage *thumbImage =
+          [[NSImage alloc] initWithCGImage:thumbImageRef
+                                      size:NSMakeSize(160, 90)];
+      CGImageRelease(thumbImageRef);
+
+      // --- Determine and embed badge ---
+      NSString *badgeText =
+          [self videoQualityBadgeForURL:videoURL]; // HD, 4K, SD
+      if (badgeText.length > 0) {
+        thumbImage = [self image:thumbImage withBadge:badgeText];
+      }
+
+      // Save thumbnail to JPEG
+      NSData *imageData = [thumbImage TIFFRepresentation];
+      NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
+      NSData *jpgData = [rep representationUsingType:NSBitmapImageFileTypeJPEG
+                                          properties:@{}];
+      NSString *thumbName = [[filename stringByDeletingPathExtension]
+          stringByAppendingPathExtension:@"jpg"];
+      NSString *thumbPath =
+          [thumbnailCachePath stringByAppendingPathComponent:thumbName];
+      [jpgData writeToFile:thumbPath atomically:YES];
+    } else {
+      NSLog(@"Error generating thumbnail for %@: %@", filename,
+            error.localizedDescription);
+    }
+  }
 }
 - (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL {
-    AVAsset *asset = [AVAsset assetWithURL:videoURL];
-    AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+  AVAsset *asset = [AVAsset assetWithURL:videoURL];
 
-    if (!videoTrack) return @"";
+  // Use synchronous loading for compatibility
+  __block AVAssetTrack *videoTrack = nil;
+  if (@available(macOS 15.0, *)) {
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    [asset loadTracksWithMediaType:AVMediaTypeVideo
+                 completionHandler:^(NSArray<AVAssetTrack *> *_Nullable tracks,
+                                     NSError *_Nullable error) {
+                   if (!error && tracks.count > 0) {
+                     videoTrack = tracks.firstObject;
+                   }
+                   dispatch_semaphore_signal(semaphore);
+                 }];
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+  } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+#pragma clang diagnostic pop
+  }
 
-    CGSize resolution = CGSizeApplyAffineTransform(videoTrack.naturalSize, videoTrack.preferredTransform);
-    resolution.width = fabs(resolution.width);
-    resolution.height = fabs(resolution.height);
-
-    if (resolution.width >= 3840 || resolution.height >= 2160) return @"4K";
-    if (resolution.width >= 1920 || resolution.height >= 1080) return @"HD";
-    if (resolution.width >= 1280 || resolution.height >= 720) return @"SD";
+  if (!videoTrack)
     return @"";
+
+  CGSize resolution = CGSizeApplyAffineTransform(videoTrack.naturalSize,
+                                                 videoTrack.preferredTransform);
+  resolution.width = fabs(resolution.width);
+  resolution.height = fabs(resolution.height);
+
+  if (resolution.width >= 3840 || resolution.height >= 2160)
+    return @"4K";
+  if (resolution.width >= 1920 || resolution.height >= 1080)
+    return @"HD";
+  if (resolution.width >= 1280 || resolution.height >= 720)
+    return @"SD";
+  return @"";
 }
 
 - (NSImage *)image:(NSImage *)image withBadge:(NSString *)badge {
-    NSImage *result = [image copy];
-    [result lockFocus];
+  NSImage *result = [image copy];
+  [result lockFocus];
 
-    // Badge text attributes
-    NSDictionary *attributes = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:14], // smaller font
-        NSForegroundColorAttributeName: [NSColor whiteColor],
-        NSStrokeColorAttributeName: [NSColor blackColor],
-        NSStrokeWidthAttributeName: @-1
-    };
+  // Badge text attributes
+  NSDictionary *attributes = @{
+    NSFontAttributeName : [NSFont boldSystemFontOfSize:14], // smaller font
+    NSForegroundColorAttributeName : [NSColor whiteColor],
+    NSStrokeColorAttributeName : [NSColor blackColor],
+    NSStrokeWidthAttributeName : @-1
+  };
 
-    NSSize textSize = [badge sizeWithAttributes:attributes];
+  NSSize textSize = [badge sizeWithAttributes:attributes];
 
-    // Semi-transparent "blur-like" background
-    NSColor *bgColor = [[NSColor blackColor] colorWithAlphaComponent:0.55]; // softer
-    NSRect bgRect = NSMakeRect(result.size.width - textSize.width - 10,
-                               result.size.height - textSize.height - 8,
-                               textSize.width + 4,
-                               textSize.height + 2);
-    NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:bgRect xRadius:3 yRadius:3];
-    [bgColor setFill];
-    [path fill];
+  // Semi-transparent "blur-like" background
+  NSColor *bgColor =
+      [[NSColor blackColor] colorWithAlphaComponent:0.55]; // softer
+  NSRect bgRect = NSMakeRect(result.size.width - textSize.width - 10,
+                             result.size.height - textSize.height - 8,
+                             textSize.width + 4, textSize.height + 2);
+  NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:bgRect
+                                                       xRadius:3
+                                                       yRadius:3];
+  [bgColor setFill];
+  [path fill];
 
-    [bgColor setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:bgRect xRadius:3 yRadius:3] fill];
+  [bgColor setFill];
+  [[NSBezierPath bezierPathWithRoundedRect:bgRect xRadius:3 yRadius:3] fill];
 
-    // Draw badge text
-    NSPoint textPoint = NSMakePoint(result.size.width - textSize.width - 8,
-                                    result.size.height - textSize.height - 6);
-    [badge drawAtPoint:textPoint withAttributes:attributes];
+  // Draw badge text
+  NSPoint textPoint = NSMakePoint(result.size.width - textSize.width - 8,
+                                  result.size.height - textSize.height - 6);
+  [badge drawAtPoint:textPoint withAttributes:attributes];
 
-    [result unlockFocus];
-    return result;
+  [result unlockFocus];
+  return result;
 }
-
-
 
 - (void)selectWallpaperFolder:(id)sender {
   [NSApp activateIgnoringOtherApps:YES];
@@ -460,7 +516,7 @@ NSString *getFolderPath(void) {
           [self showSettingsWindow:nil];
         }
         [self clearCache];
-          [self generateThumbnailsForFolder:getFolderPath()];
+        [self generateThumbnailsForFolder:getFolderPath()];
         [self reloadGrid:nil];
 
         NSLog(@"Selected wallpaper folder: %@", path);
@@ -487,244 +543,307 @@ NSTextField *CreateLabel(NSString *string) {
   return tf;
 }
 - (void)showSettingsWindow:(id)sender {
-    NSRect frame = NSMakeRect(100, 100, 400, 300);
+  NSRect frame = NSMakeRect(100, 100, 400, 300);
 
-    // Create a titled window
-    self.settingsWindow = [[NSWindow alloc] initWithContentRect:frame
-                                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
-                                                       backing:NSBackingStoreBuffered
-                                                         defer:NO];
-    [self.settingsWindow setTitle:@"Settings"];
-    [self.settingsWindow center];
-    [self.settingsWindow setOpaque:NO];
-    [self.settingsWindow setBackgroundColor:[NSColor clearColor]];
-    self.settingsWindow.titlebarAppearsTransparent = YES;
-    self.settingsWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
+  // Create a titled window
+  self.settingsWindow = [[NSWindow alloc]
+      initWithContentRect:frame
+                styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+                  backing:NSBackingStoreBuffered
+                    defer:NO];
+  [self.settingsWindow setTitle:@"Settings"];
+  [self.settingsWindow center];
+  [self.settingsWindow setOpaque:NO];
+  [self.settingsWindow setBackgroundColor:[NSColor clearColor]];
+  self.settingsWindow.titlebarAppearsTransparent = YES;
+  self.settingsWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
 
-    // Add glass background
-    NSView *glassView = nil;
-    if (@available(macOS 26.0, *)) {
-        NSGlassEffectView *effView = [[NSGlassEffectView alloc] initWithFrame:self.settingsWindow.contentView.bounds];
-        effView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        glassView = effView;
-    } else {
-        NSVisualEffectView *fallbackView = [[NSVisualEffectView alloc] initWithFrame:self.settingsWindow.contentView.bounds];
-        fallbackView.material = NSVisualEffectMaterialHUDWindow;
-        fallbackView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-        fallbackView.state = NSVisualEffectStateActive;
-        fallbackView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        glassView = fallbackView;
+  // Add glass background
+  NSView *glassView = nil;
+  if (@available(macOS 26.0, *)) {
+    NSGlassEffectView *effView = [[NSGlassEffectView alloc]
+        initWithFrame:self.settingsWindow.contentView.bounds];
+    effView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    glassView = effView;
+  } else {
+    NSVisualEffectView *fallbackView = [[NSVisualEffectView alloc]
+        initWithFrame:self.settingsWindow.contentView.bounds];
+    fallbackView.material = NSVisualEffectMaterialHUDWindow;
+    fallbackView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    fallbackView.state = NSVisualEffectStateActive;
+    fallbackView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    glassView = fallbackView;
+  }
+  [self.settingsWindow.contentView addSubview:glassView
+                                   positioned:NSWindowBelow
+                                   relativeTo:nil];
+
+  // Vertical stack container
+  NSStackView *stackView = [[NSStackView alloc] initWithFrame:NSZeroRect];
+  stackView.orientation = NSUserInterfaceLayoutOrientationVertical;
+  stackView.alignment = NSLayoutAttributeLeading;
+  stackView.spacing = 12;
+  stackView.translatesAutoresizingMaskIntoConstraints = NO;
+
+  {
+    NSView *topSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
+    topSpacer.translatesAutoresizingMaskIntoConstraints = NO;
+    [topSpacer.heightAnchor constraintEqualToConstant:24].active =
+        YES; // desired gap
+    [stackView addArrangedSubview:topSpacer];
+  }
+
+  // --- Folder Selection ---
+  {
+    LineModule *folderSelect = [[LineModule alloc] initWithFrame:NSZeroRect];
+    folderSelect.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *folderLabel = CreateLabel(@"Wallpaper Folder:");
+    folderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *folderInput = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    folderInput.translatesAutoresizingMaskIntoConstraints = NO;
+    folderInput.placeholderString = @"Select folder or type path";
+    folderInput.stringValue = folderPath ?: @"";
+    [folderInput.widthAnchor constraintEqualToConstant:200].active = YES;
+
+    NSButton *openFolder = CreateButton(@"Select Folder 📁", self,
+                                        @selector(selectWallpaperFolder:));
+    openFolder.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSButton *openInFinder = CreateButton(@"Show in Finder 📂", self,
+                                          @selector(openWallpaperFolder:));
+    openInFinder.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [folderSelect add:folderLabel];
+    [folderSelect add:folderInput];
+    [folderSelect add:openFolder];
+    [folderSelect add:openInFinder];
+    [stackView addArrangedSubview:folderSelect];
+  }
+
+  // --- Optimize Videos ---
+  {
+    LineModule *optimizeVideos = [[LineModule alloc] initWithFrame:NSZeroRect];
+    optimizeVideos.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *optimizeLabel = CreateLabel(@"Optimize Video Codecs");
+    optimizeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSButton *optimizeButton =
+        CreateButton(@"Optimize 🛠️", self, @selector(convertCodec:));
+    optimizeButton.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [optimizeVideos add:optimizeLabel];
+    [optimizeVideos add:optimizeButton];
+    [stackView addArrangedSubview:optimizeVideos];
+  }
+
+  // --- Random Wallpaper Toggle ---
+  {
+    LineModule *randomVid = [[LineModule alloc] initWithFrame:NSZeroRect];
+    randomVid.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *randomLabel = CreateLabel(@"Random Wallpaper on Startup");
+    randomLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSSwitch *randomToggle = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    randomToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    randomToggle.target = self;
+    randomToggle.action = @selector(randomToggleChanged:);
+    randomToggle.state =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"random"]
+            ? NSControlStateValueOn
+            : NSControlStateValueOff;
+
+    [randomVid add:randomLabel];
+    [randomVid add:randomToggle];
+    [stackView addArrangedSubview:randomVid];
+  }
+
+  // --- Auto-Pause When App is Focused ---
+  {
+    LineModule *autoPause = [[LineModule alloc] initWithFrame:NSZeroRect];
+    autoPause.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *autoPauseLabel = CreateLabel(@"Pause When App is Active");
+    autoPauseLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSSwitch *autoPauseToggle = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+    autoPauseToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    autoPauseToggle.target = self;
+    autoPauseToggle.action = @selector(autoPauseToggleChanged:);
+    autoPauseToggle.state =
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"pauseOnAppFocus"]
+            ? NSControlStateValueOn
+            : NSControlStateValueOff;
+
+    [autoPause add:autoPauseLabel];
+    [autoPause add:autoPauseToggle];
+    [stackView addArrangedSubview:autoPause];
+  }
+
+  // --- Video Volume ---
+  {
+    LineModule *videoVolume = [[LineModule alloc] initWithFrame:NSZeroRect];
+    videoVolume.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *volumeLabel = CreateLabel(@"Video Volume");
+    volumeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSSlider *slider = [[NSSlider alloc] initWithFrame:NSZeroRect];
+    slider.translatesAutoresizingMaskIntoConstraints = NO;
+    [slider.widthAnchor constraintEqualToConstant:200].active = YES;
+    slider.minValue = 0;
+    slider.maxValue = 100;
+    slider.floatValue = [[NSUserDefaults standardUserDefaults]
+        floatForKey:@"wallpapervolumeprecentage"];
+    slider.target = self;
+    slider.action = @selector(sliderValueChanged:);
+
+    self.precentage = CreateLabel(@"Percentage");
+    self.precentage.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.precentage.widthAnchor constraintEqualToConstant:60].active = YES;
+    self.precentage.editable = NO;
+    self.precentage.selectable = NO;
+    self.precentage.stringValue =
+        [NSString stringWithFormat:@"%.0f%%", slider.floatValue];
+
+    [videoVolume add:volumeLabel];
+    [videoVolume add:slider];
+    [videoVolume add:self.precentage];
+    [stackView addArrangedSubview:videoVolume];
+  }
+
+  // --- Clear Cache ---
+  {
+    LineModule *clearCache = [[LineModule alloc] initWithFrame:NSZeroRect];
+    clearCache.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *clearCacheLabel = CreateLabel(@"Clear Cache");
+    clearCacheLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSButton *clearCacheButton =
+        CreateButton(@"Clear Cache 🗑️", self, @selector(clearCacheButton:));
+    clearCacheButton.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [clearCache add:clearCacheLabel];
+    [clearCache add:clearCacheButton];
+    [stackView addArrangedSubview:clearCache];
+  }
+
+  // --- Reset UserData ---
+  {
+    LineModule *resetUserData = [[LineModule alloc] initWithFrame:NSZeroRect];
+    resetUserData.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSTextField *m_Label = CreateLabel(@"Reset UserData 🗑️");
+    m_Label.translatesAutoresizingMaskIntoConstraints = NO;
+
+    NSButton *m_Button = CreateButton(@"Reset", self, @selector(resetButton:));
+    m_Button.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [resetUserData add:m_Label];
+    [resetUserData add:m_Button];
+    [stackView addArrangedSubview:resetUserData];
+  }
+
+  // --- Login Item Permission ---
+  {
+    NSString *agentPath = [NSHomeDirectory()
+        stringByAppendingPathComponent:
+            @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:agentPath]) {
+      LineModule *permissions = [[LineModule alloc] initWithFrame:NSZeroRect];
+      permissions.translatesAutoresizingMaskIntoConstraints = NO;
+
+      NSTextField *permissionLabel = CreateLabel(@"Add this to LoginItems");
+      permissionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+      NSButton *permissionButton =
+          CreateButton(@"Grant Permissions", self, @selector(addLoginItem:));
+      permissionButton.translatesAutoresizingMaskIntoConstraints = NO;
+
+      [permissions add:permissionLabel];
+      [permissions add:permissionButton];
+      [stackView addArrangedSubview:permissions];
     }
-    [self.settingsWindow.contentView addSubview:glassView positioned:NSWindowBelow relativeTo:nil];
+  }
 
-    // Vertical stack container
-    NSStackView *stackView = [[NSStackView alloc] initWithFrame:NSZeroRect];
-    stackView.orientation = NSUserInterfaceLayoutOrientationVertical;
-    stackView.alignment = NSLayoutAttributeLeading;
-    stackView.spacing = 12;
-    stackView.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    {
-        NSView *topSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
-        topSpacer.translatesAutoresizingMaskIntoConstraints = NO;
-        [topSpacer.heightAnchor constraintEqualToConstant:24].active = YES; // desired gap
-        [stackView addArrangedSubview:topSpacer];
+  // Attach stack to glassView
+  [glassView addSubview:stackView];
+  [NSLayoutConstraint activateConstraints:@[
+    [stackView.topAnchor constraintEqualToAnchor:glassView.topAnchor
+                                        constant:20],
+    [stackView.leadingAnchor constraintEqualToAnchor:glassView.leadingAnchor
+                                            constant:20],
+    [stackView.trailingAnchor
+        constraintLessThanOrEqualToAnchor:glassView.trailingAnchor
+                                 constant:-20],
+    [stackView.bottomAnchor
+        constraintLessThanOrEqualToAnchor:glassView.bottomAnchor
+                                 constant:-20]
+  ]];
 
-    }
-
-    // --- Folder Selection ---
-    {
-        LineModule *folderSelect = [[LineModule alloc] initWithFrame:NSZeroRect];
-        folderSelect.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *folderLabel = CreateLabel(@"Wallpaper Folder:");
-        folderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *folderInput = [[NSTextField alloc] initWithFrame:NSZeroRect];
-        folderInput.translatesAutoresizingMaskIntoConstraints = NO;
-        folderInput.placeholderString = @"Select folder or type path";
-        folderInput.stringValue = folderPath ?: @"";
-        [folderInput.widthAnchor constraintEqualToConstant:200].active = YES;
-
-        NSButton *openFolder = CreateButton(@"Select Folder 📁", self, @selector(selectWallpaperFolder:));
-        openFolder.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSButton *openInFinder = CreateButton(@"Show in Finder 📂", self, @selector(openWallpaperFolder:));
-        openInFinder.translatesAutoresizingMaskIntoConstraints = NO;
-
-        [folderSelect add:folderLabel];
-        [folderSelect add:folderInput];
-        [folderSelect add:openFolder];
-        [folderSelect add:openInFinder];
-        [stackView addArrangedSubview:folderSelect];
-    }
-
-    // --- Optimize Videos ---
-    {
-        LineModule *optimizeVideos = [[LineModule alloc] initWithFrame:NSZeroRect];
-        optimizeVideos.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *optimizeLabel = CreateLabel(@"Optimize Video Codecs");
-        optimizeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSButton *optimizeButton = CreateButton(@"Optimize 🛠️", self, @selector(convertCodec:));
-        optimizeButton.translatesAutoresizingMaskIntoConstraints = NO;
-
-        [optimizeVideos add:optimizeLabel];
-        [optimizeVideos add:optimizeButton];
-        [stackView addArrangedSubview:optimizeVideos];
-    }
-
-    // --- Random Wallpaper Toggle ---
-    {
-        LineModule *randomVid = [[LineModule alloc] initWithFrame:NSZeroRect];
-        randomVid.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *randomLabel = CreateLabel(@"Random Wallpaper on Startup");
-        randomLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSSwitch *randomToggle = [[NSSwitch alloc] initWithFrame:NSZeroRect];
-        randomToggle.translatesAutoresizingMaskIntoConstraints = NO;
-        randomToggle.target = self;
-        randomToggle.action = @selector(randomToggleChanged:);
-        randomToggle.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] ? NSControlStateValueOn : NSControlStateValueOff;
-
-        [randomVid add:randomLabel];
-        [randomVid add:randomToggle];
-        [stackView addArrangedSubview:randomVid];
-    }
-
-    // --- Video Volume ---
-    {
-        LineModule *videoVolume = [[LineModule alloc] initWithFrame:NSZeroRect];
-        videoVolume.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *volumeLabel = CreateLabel(@"Video Volume");
-        volumeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSSlider *slider = [[NSSlider alloc] initWithFrame:NSZeroRect];
-        slider.translatesAutoresizingMaskIntoConstraints = NO;
-        [slider.widthAnchor constraintEqualToConstant:200].active = YES;
-        slider.minValue = 0;
-        slider.maxValue = 100;
-        slider.floatValue = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolumeprecentage"];
-        slider.target = self;
-        slider.action = @selector(sliderValueChanged:);
-
-        self.precentage = CreateLabel(@"Percentage");
-        self.precentage.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.precentage.widthAnchor constraintEqualToConstant:60].active = YES;
-        self.precentage.editable = NO;
-        self.precentage.selectable = NO;
-        self.precentage.stringValue = [NSString stringWithFormat:@"%.0f%%", slider.floatValue];
-
-        [videoVolume add:volumeLabel];
-        [videoVolume add:slider];
-        [videoVolume add:self.precentage];
-        [stackView addArrangedSubview:videoVolume];
-    }
-
-    // --- Clear Cache ---
-    {
-        LineModule *clearCache = [[LineModule alloc] initWithFrame:NSZeroRect];
-        clearCache.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *clearCacheLabel = CreateLabel(@"Clear Cache");
-        clearCacheLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSButton *clearCacheButton = CreateButton(@"Clear Cache 🗑️", self, @selector(clearCacheButton:));
-        clearCacheButton.translatesAutoresizingMaskIntoConstraints = NO;
-
-        [clearCache add:clearCacheLabel];
-        [clearCache add:clearCacheButton];
-        [stackView addArrangedSubview:clearCache];
-    }
-
-    // --- Reset UserData ---
-    {
-        LineModule *resetUserData = [[LineModule alloc] initWithFrame:NSZeroRect];
-        resetUserData.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSTextField *m_Label = CreateLabel(@"Reset UserData 🗑️");
-        m_Label.translatesAutoresizingMaskIntoConstraints = NO;
-
-        NSButton *m_Button = CreateButton(@"Reset", self, @selector(resetButton:));
-        m_Button.translatesAutoresizingMaskIntoConstraints = NO;
-
-        [resetUserData add:m_Label];
-        [resetUserData add:m_Button];
-        [stackView addArrangedSubview:resetUserData];
-    }
-
-    // --- Login Item Permission ---
-    {
-        NSString *agentPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:agentPath]) {
-            LineModule *permissions = [[LineModule alloc] initWithFrame:NSZeroRect];
-            permissions.translatesAutoresizingMaskIntoConstraints = NO;
-
-            NSTextField *permissionLabel = CreateLabel(@"Add this to LoginItems");
-            permissionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-            NSButton *permissionButton = CreateButton(@"Grant Permissions 􀮓", self, @selector(addLoginItem:));
-            permissionButton.translatesAutoresizingMaskIntoConstraints = NO;
-
-            [permissions add:permissionLabel];
-            [permissions add:permissionButton];
-            [stackView addArrangedSubview:permissions];
-        }
-    }
-
-    // Attach stack to glassView
-    [glassView addSubview:stackView];
-    [NSLayoutConstraint activateConstraints:@[
-        [stackView.topAnchor constraintEqualToAnchor:glassView.topAnchor constant:20],
-        [stackView.leadingAnchor constraintEqualToAnchor:glassView.leadingAnchor constant:20],
-        [stackView.trailingAnchor constraintLessThanOrEqualToAnchor:glassView.trailingAnchor constant:-20],
-        [stackView.bottomAnchor constraintLessThanOrEqualToAnchor:glassView.bottomAnchor constant:-20]
-    ]];
-
-    // Fade-in animation
-    [self.settingsWindow setAlphaValue:0.0];
-    [self.settingsWindow makeKeyAndOrderFront:nil];
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+  // Fade-in animation
+  [self.settingsWindow setAlphaValue:0.0];
+  [NSApp activateIgnoringOtherApps:YES];
+  [self.settingsWindow makeKeyAndOrderFront:nil];
+  [NSAnimationContext
+      runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.4;
         self.settingsWindow.animator.alphaValue = 1.0;
-    } completionHandler:nil];
+      }
+      completionHandler:nil];
 }
 - (void)randomToggleChanged:(NSSwitch *)sender {
-    BOOL enabled = (sender.state == NSControlStateValueOn);
-    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"random"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+  BOOL enabled = (sender.state == NSControlStateValueOn);
+  [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"random"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)autoPauseToggleChanged:(NSSwitch *)sender {
+  BOOL enabled = (sender.state == NSControlStateValueOn);
+  [[NSUserDefaults standardUserDefaults] setBool:enabled
+                                          forKey:@"pauseOnAppFocus"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+
+  // Notify daemon about the setting change
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.autoPauseChanged"), NULL, NULL, true);
 }
 
 - (void)clearCacheButton:(id)sender {
-    [self clearCache];
+  [self clearCache];
 }
 - (void)resetButton:(id)sender {
-    [self resetUserData];
+  [self resetUserData];
 }
 
 - (void)sliderValueChanged:(NSSlider *)sender {
-    float f_percentage = sender.floatValue;
-    float volume = f_percentage / 100.0f;
+  float f_percentage = sender.floatValue;
+  float volume = f_percentage / 100.0f;
 
-    NSLog(@"Slider: %.0f%% → volume: %.2f", f_percentage, volume);
+  NSLog(@"Slider: %.0f%% → volume: %.2f", f_percentage, volume);
 
-    self.precentage.stringValue = [NSString stringWithFormat:@"%.0f%%", f_percentage];
-    self.touchbar_volume.stringValue = [NSString stringWithFormat:@"%.0f%%", f_percentage];
+  self.precentage.stringValue =
+      [NSString stringWithFormat:@"%.0f%%", f_percentage];
+  self.touchbar_volume.stringValue =
+      [NSString stringWithFormat:@"%.0f%%", f_percentage];
 
-    [[NSUserDefaults standardUserDefaults] setFloat:f_percentage forKey:@"wallpapervolumeprecentage"];
-    [[NSUserDefaults standardUserDefaults] setFloat:volume forKey:@"wallpapervolume"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
+  [[NSUserDefaults standardUserDefaults] setFloat:f_percentage
+                                           forKey:@"wallpapervolumeprecentage"];
+  [[NSUserDefaults standardUserDefaults] setFloat:volume
+                                           forKey:@"wallpapervolume"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
 
-    self.volumePopoverItem.collapsedRepresentationImage = [self volumeIconForValue:f_percentage];
+  self.volumePopoverItem.collapsedRepresentationImage =
+      [self volumeIconForValue:f_percentage];
 
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR("com.live.wallpaper.volumeChanged"),
-        NULL, NULL, true
-    );
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.volumeChanged"), NULL, NULL, true);
 }
 
 - (BOOL)isFirstLaunch {
@@ -924,8 +1043,26 @@ NSTextField *CreateLabel(NSString *string) {
           AVAsset *asset = [AVAsset assetWithURL:fileURL];
           BOOL isHEVC = NO;
 
-          for (AVAssetTrack *track in
-               [asset tracksWithMediaType:AVMediaTypeVideo]) {
+          // Get video tracks with compatibility for old and new APIs
+          __block NSArray<AVAssetTrack *> *videoTracks = nil;
+          if (@available(macOS 15.0, *)) {
+            dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+            [asset loadTracksWithMediaType:AVMediaTypeVideo
+                         completionHandler:^(
+                             NSArray<AVAssetTrack *> *_Nullable tracks,
+                             NSError *_Nullable error) {
+                           videoTracks = tracks;
+                           dispatch_semaphore_signal(semaphore);
+                         }];
+            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+          } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+#pragma clang diagnostic pop
+          }
+
+          for (AVAssetTrack *track in videoTracks) {
             CFArrayRef formatDescriptions =
                 (__bridge CFArrayRef)track.formatDescriptions;
             for (CFIndex i = 0; i < CFArrayGetCount(formatDescriptions); i++) {
@@ -1114,18 +1251,19 @@ NSTextField *CreateLabel(NSString *string) {
 
       NSString *cacheImagePath = [[self thumbnailCachePath]
           stringByAppendingPathComponent:
-              [[filename stringByDeletingPathExtension] stringByAppendingPathExtension:@"jpg"]];
+              [[filename stringByDeletingPathExtension]
+                  stringByAppendingPathExtension:@"jpg"]];
 
       NSImage *image = [[NSImage alloc] initWithContentsOfFile:cacheImagePath];
       if (image) {
         btn.image = image;
       } else {
         NSLog(@"Thumbnail not found for %@", cacheImagePath);
-          [self generateThumbnailsForFolder:getFolderPath()];
+        [self generateThumbnailsForFolder:getFolderPath()];
       }
-        
-        btn.layer.cornerRadius = 10;
-        btn.layer.masksToBounds = YES;
+
+      btn.layer.cornerRadius = 10;
+      btn.layer.masksToBounds = YES;
 
       btn.image = image;
       btn.bezelStyle = NSBezelStyleShadowlessSquare;
@@ -1155,7 +1293,7 @@ NSTextField *CreateLabel(NSString *string) {
                                                           error:nil];
   if (contents.count == 0) {
     checkFolderPath();
-      [self generateThumbnailsForFolder:getFolderPath()];
+    [self generateThumbnailsForFolder:getFolderPath()];
   }
   [self ReloadContent];
 
@@ -1246,21 +1384,15 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   NSString *daemonPath =
       [appPath stringByAppendingPathComponent:daemonRelativePath];
 
+  float volume =
+      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+  NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
 
-float volume = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
-NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
+  const char *daemonPathC = [daemonPath UTF8String];
+  const char *args[] = {daemonPathC, [videoPath UTF8String],
+                        [imagePath UTF8String], [volumeStr UTF8String], NULL};
 
-const char *daemonPathC = [daemonPath UTF8String];
-const char *args[] = {
-    daemonPathC,
-    [videoPath UTF8String],
-    [imagePath UTF8String],
-    [volumeStr UTF8String],
-    NULL
-};
-
-
-   pid_t pid;
+  pid_t pid;
   int status =
       posix_spawn(&pid, daemonPathC, NULL, NULL, (char *const *)args, environ);
   if (status != 0) {
@@ -1326,7 +1458,6 @@ const char *args[] = {
 
   NSString *videoPath =
       [folderPath stringByAppendingPathComponent:sender.toolTip];
-    
 
   [self startWallpaperWithPath:videoPath];
 }
@@ -1354,7 +1485,7 @@ const char *args[] = {
   }
 
   // Open folder in Finder
-  [[NSWorkspace sharedWorkspace] openFile:folderPath];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:folderPath]];
 }
 // Touchbar
 - (NSTouchBar *)makeTouchBar {
@@ -1364,21 +1495,24 @@ const char *args[] = {
   touchBar.defaultItemIdentifiers = @[
     NSTouchBarItemIdentifierFlexibleSpace, @"com.livewallpaper.reload",
     @"com.livewallpaper.selectfolder", @"com.livewallpaper.openfolder",
-    @"com.livewallpaper.settings", @"com.livewallpaper.volume", NSTouchBarItemIdentifierFlexibleSpace
+    @"com.livewallpaper.settings", @"com.livewallpaper.volume",
+    NSTouchBarItemIdentifierFlexibleSpace
   ];
   return touchBar;
 }
 
 - (NSImage *)volumeIconForValue:(double)value {
-    if (value <= 0.0) {
-        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputMuteTemplate];
-    } else if (value < 30.0) {
-        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeLowTemplate];
-    } else if (value < 70.0) {
-        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeMediumTemplate];
-    } else {
-        return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeHighTemplate];
-    }
+  if (value <= 0.0) {
+    return [NSImage imageNamed:NSImageNameTouchBarAudioOutputMuteTemplate];
+  } else if (value < 30.0) {
+    return [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeLowTemplate];
+  } else if (value < 70.0) {
+    return
+        [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeMediumTemplate];
+  } else {
+    return
+        [NSImage imageNamed:NSImageNameTouchBarAudioOutputVolumeHighTemplate];
+  }
 }
 
 - (NSTouchBarItem *)touchBar:(NSTouchBar *)touchBar
@@ -1405,9 +1539,19 @@ const char *args[] = {
   } else if ([identifier isEqualToString:@"com.livewallpaper.reload"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button = [NSButton buttonWithTitle:@"􂣽"
-                                          target:self
-                                          action:@selector(reloadGrid:)];
+    NSButton *button;
+    if (@available(macOS 11.0, *)) {
+      NSImage *reloadIcon =
+          [NSImage imageWithSystemSymbolName:@"arrow.clockwise"
+                    accessibilityDescription:@"Reload"];
+      button = [NSButton buttonWithImage:reloadIcon
+                                  target:self
+                                  action:@selector(reloadGrid:)];
+    } else {
+      button = [NSButton buttonWithTitle:@"↻"
+                                  target:self
+                                  action:@selector(reloadGrid:)];
+    }
     item.view = button;
     return item;
   } else if ([identifier isEqualToString:@"com.livewallpaper.settings"]) {
@@ -1419,44 +1563,51 @@ const char *args[] = {
                            action:@selector(showSettingsWindow:)];
     item.view = button;
     return item;
-  }else if ([identifier isEqualToString:@"com.livewallpaper.volume"]) {
-    
+  } else if ([identifier isEqualToString:@"com.livewallpaper.volume"]) {
+
     NSPopoverTouchBarItem *popoverItem =
         [[NSPopoverTouchBarItem alloc] initWithIdentifier:identifier];
 
-    double currentValue = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolumeprecentage"];
-popoverItem.collapsedRepresentationImage = [self volumeIconForValue:currentValue];
-    popoverItem.showsCloseButton = YES;              
+    double currentValue = [[NSUserDefaults standardUserDefaults]
+        floatForKey:@"wallpapervolumeprecentage"];
+    popoverItem.collapsedRepresentationImage =
+        [self volumeIconForValue:currentValue];
+    popoverItem.showsCloseButton = YES;
 
     // Expanded bar
     NSTouchBar *expandedTouchBar = [[NSTouchBar alloc] init];
     expandedTouchBar.delegate = self;
-    expandedTouchBar.defaultItemIdentifiers = @[ @"com.livewallpaper.volume.slider" ];
+    expandedTouchBar.defaultItemIdentifiers =
+        @[ @"com.livewallpaper.volume.slider" ];
 
     popoverItem.popoverTouchBar = expandedTouchBar;
     self.volumePopoverItem = popoverItem;
     return popoverItem;
-}
-else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
+  } else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
 
     // Container
-    NSStackView *container = [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0, 280, 30)];
+    NSStackView *container =
+        [[NSStackView alloc] initWithFrame:NSMakeRect(0, 0, 280, 30)];
     container.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     container.spacing = 8.0;
 
     // Slider
-    NSSlider *slider = [[NSSlider alloc] initWithFrame:NSMakeRect(0, 0, 220, 20)];
+    NSSlider *slider =
+        [[NSSlider alloc] initWithFrame:NSMakeRect(0, 0, 220, 20)];
     slider.minValue = 0;
     slider.maxValue = 100;
-    slider.doubleValue = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolumeprecentage"];
+    slider.doubleValue = [[NSUserDefaults standardUserDefaults]
+        floatForKey:@"wallpapervolumeprecentage"];
     slider.target = self;
     slider.action = @selector(sliderValueChanged:);
 
     // Percentage label
-    NSTextField *percentageLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 40, 30)];
-    percentageLabel.stringValue = [NSString stringWithFormat:@"%.0f%%", slider.doubleValue];
+    NSTextField *percentageLabel =
+        [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 40, 30)];
+    percentageLabel.stringValue =
+        [NSString stringWithFormat:@"%.0f%%", slider.doubleValue];
     percentageLabel.editable = NO;
     percentageLabel.bezeled = NO;
     percentageLabel.drawsBackground = NO;
@@ -1471,7 +1622,7 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
 
     item.view = container;
     return item;
-}
+  }
   NSLog(@"No Item found on identifier");
   return nil;
 }
@@ -1480,9 +1631,9 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   [self.blurWindow.contentView setWantsLayer:YES];
   [self.settingsWindow.contentView setWantsLayer:YES];
 
-    if(![self isFirstLaunch]){
-        [self fadeOutWindowsWithCompletion:nil];
-    }
+  if (![self isFirstLaunch]) {
+    [self fadeOutWindowsWithCompletion:nil];
+  }
 
   checkFolderPath();
   if ([self isFirstLaunch]) {
@@ -1490,13 +1641,13 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
     [self checkAndPromptPermissions];
   }
   NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
-    
-    //Display changes
-  [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(screensDidChange:)
-                                                 name:NSApplicationDidChangeScreenParametersNotification
-                                               object:nil];
 
+  // Display changes
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(screensDidChange:)
+             name:NSApplicationDidChangeScreenParametersNotification
+           object:nil];
 
   [[[NSWorkspace sharedWorkspace] notificationCenter]
       addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
@@ -1516,10 +1667,9 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
                     defer:NO];
   [self.blurWindow setTitle:@"LiveWallpaper by Bios"];
   [self.blurWindow center];
-    
-[self.blurWindow makeKeyAndOrderFront:nil];
-    
-  [self.blurWindow setShowsResizeIndicator:YES];
+
+  [self.blurWindow makeKeyAndOrderFront:nil];
+
   self.blurWindow.delegate = self;
   if (@available(macOS 10.12.2, *)) {
     NSLog(@"Touchbar supported!");
@@ -1528,51 +1678,49 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   } else {
     NSLog(@"Touchbar not supported!");
   }
-    [self.blurWindow setOpaque:NO];
-    
-    
-    [self.blurWindow setBackgroundColor:[NSColor clearColor]];
-    
-    NSView *effectView = nil;
+  [self.blurWindow setOpaque:NO];
 
-    if (@available(macOS 26.0, *)) {
-        // macOS 26+ uses NSGlassEffectView (Liquid Glass)
-        NSGlassEffectView *blurView = [[NSGlassEffectView alloc]
-                                       initWithFrame:[[self.blurWindow contentView] bounds]];
-        [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-        [blurView setWantsLayer:YES];
-        effectView = blurView;
-    } else {
-        // fallback for macOS 15 and older
-        NSVisualEffectView *blurView = [[NSVisualEffectView alloc]
-                                        initWithFrame:[[self.blurWindow contentView] bounds]];
-        blurView.material = NSVisualEffectMaterialHUDWindow; // or Menu, Sidebar etc.
-        blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-        blurView.state = NSVisualEffectStateActive;
-        [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-        [blurView setWantsLayer:YES];
-        effectView = blurView;
-    }
+  [self.blurWindow setBackgroundColor:[NSColor clearColor]];
 
-    // add the effect view below everything
-    [[self.blurWindow contentView] addSubview:effectView
-                                   positioned:NSWindowBelow
-                                   relativeTo:nil];
+  NSView *effectView = nil;
 
-    // keep content reference
-    NSView *content = [self.blurWindow contentView];
+  if (@available(macOS 26.0, *)) {
+    // macOS 26+ uses NSGlassEffectView (Liquid Glass)
+    NSGlassEffectView *blurView = [[NSGlassEffectView alloc]
+        initWithFrame:[[self.blurWindow contentView] bounds]];
+    [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [blurView setWantsLayer:YES];
+    effectView = blurView;
+  } else {
+    // fallback for macOS 15 and older
+    NSVisualEffectView *blurView = [[NSVisualEffectView alloc]
+        initWithFrame:[[self.blurWindow contentView] bounds]];
+    blurView.material =
+        NSVisualEffectMaterialHUDWindow; // or Menu, Sidebar etc.
+    blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    blurView.state = NSVisualEffectStateActive;
+    [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+    [blurView setWantsLayer:YES];
+    effectView = blurView;
+  }
 
-    // clear layers
-    content.layer.backgroundColor = [NSColor clearColor].CGColor;
-    effectView.layer.backgroundColor = [NSColor clearColor].CGColor;
+  // add the effect view below everything
+  [[self.blurWindow contentView] addSubview:effectView
+                                 positioned:NSWindowBelow
+                                 relativeTo:nil];
 
-    // window styling
-    self.blurWindow.titleVisibility = NSWindowTitleVisible; // or NSWindowTitleHidden
-    self.blurWindow.titlebarAppearsTransparent = YES;
-    self.blurWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
-    
-    
+  // keep content reference
+  NSView *content = [self.blurWindow contentView];
 
+  // clear layers
+  content.layer.backgroundColor = [NSColor clearColor].CGColor;
+  effectView.layer.backgroundColor = [NSColor clearColor].CGColor;
+
+  // window styling
+  self.blurWindow.titleVisibility =
+      NSWindowTitleVisible; // or NSWindowTitleHidden
+  self.blurWindow.titlebarAppearsTransparent = YES;
+  self.blurWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
 
   NSStackView *mainStack = [[NSStackView alloc] init];
   mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -1592,20 +1740,34 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
                                            constant:-12],
   ]];
 
-    //Titlebar space
-    {
-        NSView *topSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
-        topSpacer.translatesAutoresizingMaskIntoConstraints = NO;
-        [topSpacer.heightAnchor constraintEqualToConstant:24].active = YES; // desired gap
-        [mainStack addArrangedSubview:topSpacer];
-
-    }
+  // Titlebar space
+  {
+    NSView *topSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
+    topSpacer.translatesAutoresizingMaskIntoConstraints = NO;
+    [topSpacer.heightAnchor constraintEqualToConstant:24].active =
+        YES; // desired gap
+    [mainStack addArrangedSubview:topSpacer];
+  }
   {
     LineModule *buttonPanel = [[LineModule alloc] initWithFrame:NSZeroRect];
     NSButton *settingsButton =
         CreateButton(@"⚙️", self, @selector(showSettingsWindow:));
+
+    // Create reload button with proper system icon
     NSButton *reloadButton =
-        CreateButton(@"􂣽", self, @selector(reloadGrid:));
+        [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    if (@available(macOS 11.0, *)) {
+      NSImage *reloadIcon =
+          [NSImage imageWithSystemSymbolName:@"arrow.clockwise"
+                    accessibilityDescription:@"Reload"];
+      [reloadButton setImage:reloadIcon];
+      [reloadButton setImagePosition:NSImageOnly];
+    } else {
+      [reloadButton setTitle:@"↻"];
+    }
+    [reloadButton setBezelStyle:NSBezelStyleRounded];
+    [reloadButton setTarget:self];
+    [reloadButton setAction:@selector(reloadGrid:)];
 
     [buttonPanel add:reloadButton];
     [buttonPanel add:settingsButton];
@@ -1618,6 +1780,8 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   gridContainer.spacing = 12;
   gridContainer.edgeInsets = NSEdgeInsetsMake(12, 12, 12, 12);
   gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
+  gridContainer.alignment =
+      NSLayoutAttributeCenterX; // Center the grid horizontally
   [gridContainer setWantsLayer:YES];
 
   NSScrollView *scrollView = [[NSScrollView alloc] init];
@@ -1631,19 +1795,12 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   scrollView.documentView = gridContainer;
   scrollView.drawsBackground = NO;
 
-  scrollView.hasVerticalScroller = YES;
-  scrollView.hasHorizontalScroller = NO;
-  scrollView.drawsBackground = NO;
-  scrollView.documentView = gridContainer;
-
   gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
   [NSLayoutConstraint activateConstraints:@[
     [gridContainer.topAnchor
         constraintEqualToAnchor:scrollView.contentView.topAnchor],
-    [gridContainer.leadingAnchor
-        constraintEqualToAnchor:scrollView.contentView.leadingAnchor],
-    [gridContainer.trailingAnchor
-        constraintEqualToAnchor:scrollView.contentView.trailingAnchor],
+    [gridContainer.centerXAnchor
+        constraintEqualToAnchor:scrollView.contentView.centerXAnchor],
     [gridContainer.bottomAnchor
         constraintEqualToAnchor:scrollView.contentView.bottomAnchor],
   ]];
@@ -1661,6 +1818,12 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
                                    NSLayoutConstraintOrientationHorizontal];
 
   [self reloadGrid:nil];
+
+  // Reload grid again after window is fully displayed to ensure proper
+  // centering
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self reloadGrid:nil];
+  });
 
   self.statusItem = [[NSStatusBar systemStatusBar]
       statusItemWithLength:NSSquareStatusItemLength];
@@ -1690,13 +1853,14 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
            keyEquivalent:@"s"];
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
-    
-    if (buttons.count > 0 && [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
-        NSLog(@"Loading Random Wallpaper...");
-        NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
-        NSButton *randomButton = buttons[randomIndex];
-        [randomButton performClick:nil];
-    }
+
+  if (buttons.count > 0 &&
+      [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
+    NSLog(@"Loading Random Wallpaper...");
+    NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+    NSButton *randomButton = buttons[randomIndex];
+    [randomButton performClick:nil];
+  }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
@@ -1723,8 +1887,8 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
       runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.4;
         self.blurWindow.animator.alphaValue = 0.0;
-        //if (self.settingsWindow) {
-          //self.settingsWindow.animator.alphaValue = 0.0;
+        // if (self.settingsWindow) {
+        // self.settingsWindow.animator.alphaValue = 0.0;
         //}
       }
       completionHandler:^{
@@ -1740,25 +1904,27 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   return NO;
 }
 - (void)fadeOutWindowsWithCompletion:(void (^)(void))completion {
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+  [NSAnimationContext
+      runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.4;
         self.blurWindow.animator.alphaValue = 0.0;
         if (self.settingsWindow) {
-            self.settingsWindow.animator.alphaValue = 0.0;
+          self.settingsWindow.animator.alphaValue = 0.0;
         }
-    } completionHandler:^{
+      }
+      completionHandler:^{
         [self.blurWindow orderOut:nil];
         if (self.settingsWindow) {
-            [self.settingsWindow orderOut:nil];
+          [self.settingsWindow orderOut:nil];
         }
         self.blurWindow.alphaValue = 1.0;
         if (self.settingsWindow) {
-            self.settingsWindow.alphaValue = 1.0;
+          self.settingsWindow.alphaValue = 1.0;
         }
-        if (completion) completion();
-    }];
+        if (completion)
+          completion();
+      }];
 }
-
 
 @end
 
@@ -1780,7 +1946,6 @@ int main(int argc, const char *argv[]) {
       [delegate startWallpaperWithPath:savedPath];
       LogMemoryUsage();
     }
-    
 
     [app run];
   }
