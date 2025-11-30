@@ -185,8 +185,8 @@
   NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
 
   for (NSScreen *screen in screens) {
-    // 1. Use VISIBLE frame (excludes menu bar)
-    NSRect visibleFrame = screen.visibleFrame;
+    
+    NSRect visibleFrame = screen.frame;
 
     NSWindow *window =
         [[NSWindow alloc] initWithContentRect:visibleFrame

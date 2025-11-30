@@ -39,6 +39,8 @@
 #include <stdexcept>
 #include <string>
 
+#define MAX_HEIGHT 500
+
 void LogMemoryUsage(void) {
   task_vm_info_data_t vmInfo;
   mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
@@ -89,42 +91,47 @@ std::string run_command(const std::string &cmd) {
 // }
 
 bool set_wallpaper_all_spaces(const std::string &imagePath) {
-    @autoreleasepool {
-        if (imagePath.empty()) {
-            NSLog(@"ERROR: Empty image path");
-            return false;
-        }
-        
-        NSString *nsPath = [NSString stringWithUTF8String:imagePath.c_str()];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:nsPath]) {
-            NSLog(@"ERROR: Image not found: %@", nsPath);
-            return false;
-        }
-        
-        NSURL *imageURL = [NSURL fileURLWithPath:nsPath];
-        NSArray<NSScreen *> *screens = [NSScreen screens];
-        
-        for (NSScreen *screen in screens) {
-            // Use empty options dictionary for standard behavior
-            NSDictionary *options = @{};
-            
-            NSError *error = nil;
-            BOOL success = [[NSWorkspace sharedWorkspace] setDesktopImageURL:imageURL
-                                                                       forScreen:screen
-                                                                        options:options
-                                                                          error:&error];
-            
-            if (!success) {
-                NSLog(@"Failed screen %@: %@", screen, error.localizedDescription);
-                return false;
-            }
-        }
-        
-        NSLog(@"✅ Set wallpaper on %lu screens (all spaces)", (unsigned long)screens.count);
-        return true;
+  @autoreleasepool {
+    if (imagePath.empty()) {
+      NSLog(@"ERROR: Empty image path");
+      return false;
     }
-}
 
+    NSString *nsPath = [NSString stringWithUTF8String:imagePath.c_str()];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:nsPath]) {
+      NSLog(@"ERROR: Image not found: %@", nsPath);
+      return false;
+    }
+
+    // Load user preference for scale mode
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSInteger scaleMode =
+        [defaults integerForKey:@"scale_mode"]; // default 0 if not set
+    // Map your integer values to NSImageScaling enum if needed
+    NSNumber *scalingValue = @(scaleMode);
+
+    NSDictionary *options = @{NSWorkspaceDesktopImageScalingKey : scalingValue};
+
+    NSURL *imageURL = [NSURL fileURLWithPath:nsPath];
+    NSArray<NSScreen *> *screens = [NSScreen screens];
+
+    for (NSScreen *screen in screens) {
+      NSError *error = nil;
+      BOOL success = [[NSWorkspace sharedWorkspace] setDesktopImageURL:imageURL
+                                                             forScreen:screen
+                                                               options:options
+                                                                 error:&error];
+      if (!success) {
+        NSLog(@"Failed screen %@: %@", screen, error.localizedDescription);
+        return false;
+      }
+    }
+
+    NSLog(@"✅ Set wallpaper on %lu screens (all spaces) with scale mode %ld",
+          (unsigned long)screens.count, (long)scaleMode);
+    return true;
+  }
+}
 void handleSpaceChange(NSNotification *note) {
   if (!set_wallpaper_all_spaces(frame)) {
     std::cerr << "Failed to set wallpaper on all Spaces.\n";
@@ -333,14 +340,12 @@ NSString *getFolderPath(void) {
     }
   }
 }
-
 - (void)generateThumbnailsForFolder:(NSString *)folderPath {
   NSLog(@"Generating Thumbnails...");
   NSFileManager *fileManager = [NSFileManager defaultManager];
   NSString *thumbnailCachePath = [self thumbnailCachePath];
 
   [self clearCache];
-  // Create thumbnail folder if not exists
   if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
     [fileManager createDirectoryAtPath:thumbnailCachePath
            withIntermediateDirectories:YES
@@ -350,6 +355,15 @@ NSString *getFolderPath(void) {
 
   NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
                                                                 error:nil];
+  if (files.count == 0) {
+    NSLog(@"No files found in folder: %@", folderPath);
+    return;
+  }
+
+  dispatch_queue_t thumbnailQueue = dispatch_queue_create(
+      "com.app.thumbnailQueue", DISPATCH_QUEUE_CONCURRENT);
+  dispatch_semaphore_t semaphore =
+      dispatch_semaphore_create(4); // limit parallelism to avoid memory spike
 
   for (NSString *filename in files) {
     if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
@@ -357,74 +371,56 @@ NSString *getFolderPath(void) {
       continue;
     }
 
-    NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
-    NSURL *videoURL = [NSURL fileURLWithPath:filePath];
-    AVAsset *asset = [AVAsset assetWithURL:videoURL];
-    AVAssetImageGenerator *imageGenerator =
-        [[AVAssetImageGenerator alloc] initWithAsset:asset];
-    imageGenerator.appliesPreferredTrackTransform = YES;
-    imageGenerator.maximumSize = CGSizeMake(160, 90); // thumbnail size
+    dispatch_semaphore_wait(semaphore,
+                            DISPATCH_TIME_FOREVER); // throttle concurrency
+    dispatch_async(thumbnailQueue, ^{
+      @autoreleasepool { // free memory each iteration
+        NSString *filePath =
+            [folderPath stringByAppendingPathComponent:filename];
+        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
+        AVAsset *asset = [AVAsset assetWithURL:videoURL];
+        AVAssetImageGenerator *imageGenerator =
+            [[AVAssetImageGenerator alloc] initWithAsset:asset];
+        imageGenerator.appliesPreferredTrackTransform = YES;
+        imageGenerator.maximumSize = CGSizeMake(160, 90);
 
-    Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
-    CMTime midpoint =
-        CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
+        Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
+        CMTime midpoint =
+            CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
 
-    __block CGImageRef thumbImageRef = NULL;
-    __block NSError *error = nil;
+        NSError *error = nil;
+        CGImageRef thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
+                                                          actualTime:NULL
+                                                               error:&error];
+        if (thumbImageRef && !error) {
+          NSImage *thumbImage =
+              [[NSImage alloc] initWithCGImage:thumbImageRef
+                                          size:NSMakeSize(160, 90)];
+          CGImageRelease(thumbImageRef);
 
-    if (@available(macOS 15.0, *)) {
-      // Use new async API for macOS 15+
-      dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-      [imageGenerator
-          generateCGImageAsynchronouslyForTime:midpoint
-                             completionHandler:^(CGImageRef _Nullable image,
-                                                 CMTime actualTime,
-                                                 NSError *_Nullable genError) {
-                               if (image && !genError) {
-                                 thumbImageRef = CGImageRetain(image);
-                               } else {
-                                 error = genError;
-                               }
-                               dispatch_semaphore_signal(semaphore);
-                             }];
-      dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    } else {
-// Use deprecated API for older macOS versions
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-      thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
-                                             actualTime:NULL
-                                                  error:&error];
-#pragma clang diagnostic pop
-    }
+          NSString *badgeText = [self videoQualityBadgeForURL:videoURL];
+          if (badgeText.length > 0) {
+            thumbImage = [self image:thumbImage withBadge:badgeText];
+          }
 
-    if (thumbImageRef && !error) {
-      NSImage *thumbImage =
-          [[NSImage alloc] initWithCGImage:thumbImageRef
-                                      size:NSMakeSize(160, 90)];
-      CGImageRelease(thumbImageRef);
+          NSData *imageData = [thumbImage TIFFRepresentation];
+          NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
+          NSData *jpgData =
+              [rep representationUsingType:NSBitmapImageFileTypeJPEG
+                                properties:@{}];
 
-      // --- Determine and embed badge ---
-      NSString *badgeText =
-          [self videoQualityBadgeForURL:videoURL]; // HD, 4K, SD
-      if (badgeText.length > 0) {
-        thumbImage = [self image:thumbImage withBadge:badgeText];
+          NSString *thumbName = [[filename stringByDeletingPathExtension]
+              stringByAppendingPathExtension:@"jpg"];
+          NSString *thumbPath =
+              [thumbnailCachePath stringByAppendingPathComponent:thumbName];
+          [jpgData writeToFile:thumbPath atomically:YES];
+        } else {
+          NSLog(@"Error generating thumbnail for %@: %@", filename,
+                error.localizedDescription);
+        }
       }
-
-      // Save thumbnail to JPEG
-      NSData *imageData = [thumbImage TIFFRepresentation];
-      NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:imageData];
-      NSData *jpgData = [rep representationUsingType:NSBitmapImageFileTypeJPEG
-                                          properties:@{}];
-      NSString *thumbName = [[filename stringByDeletingPathExtension]
-          stringByAppendingPathExtension:@"jpg"];
-      NSString *thumbPath =
-          [thumbnailCachePath stringByAppendingPathComponent:thumbName];
-      [jpgData writeToFile:thumbPath atomically:YES];
-    } else {
-      NSLog(@"Error generating thumbnail for %@: %@", filename,
-            error.localizedDescription);
-    }
+      dispatch_semaphore_signal(semaphore);
+    });
   }
 }
 - (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL {
@@ -667,41 +663,46 @@ NSTextField *CreateLabel(NSString *string) {
   }
 
   // --- Video Scaling Mode Selector ---
-{
-  LineModule *scaleVid = [[LineModule alloc] initWithFrame:NSZeroRect];
-  scaleVid.translatesAutoresizingMaskIntoConstraints = NO;
+  {
+    LineModule *scaleVid = [[LineModule alloc] initWithFrame:NSZeroRect];
+    scaleVid.translatesAutoresizingMaskIntoConstraints = NO;
 
-  NSTextField *scaleLabel = CreateLabel(@"Video Scaling Mode");
-  scaleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    NSTextField *scaleLabel = CreateLabel(@"Video Scaling Mode");
+    scaleLabel.translatesAutoresizingMaskIntoConstraints = NO;
 
-  NSPopUpButton *scalePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-  scalePopup.translatesAutoresizingMaskIntoConstraints = NO;
-  scalePopup.target = self;
-  scalePopup.action = @selector(scaleModeChanged:);
-  
-  // Add menu items
-  [scalePopup addItemWithTitle:@"Fill"];
-  [scalePopup addItemWithTitle:@"Fit"];
-  [scalePopup addItemWithTitle:@"Stretch"];
-  [scalePopup addItemWithTitle:@"Center"];
-  [scalePopup addItemWithTitle:@"HeightFill"];
-  //height-fill
-  
-  // Load saved mode (default "fill")
-  NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
-  NSInteger selectedIndex = 0; // Default fill
-  if ([savedMode isEqualToString:@"fit"]) selectedIndex = 1;
-  else if ([savedMode isEqualToString:@"stretch"]) selectedIndex = 2;
-  else if ([savedMode isEqualToString:@"center"]) selectedIndex = 3;
-  else if([savedMode isEqualToString:@"height-fill"]) selectedIndex = 4;
-  
-  [scalePopup selectItemAtIndex:selectedIndex];
+    NSPopUpButton *scalePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect
+                                                           pullsDown:NO];
+    scalePopup.translatesAutoresizingMaskIntoConstraints = NO;
+    scalePopup.target = self;
+    scalePopup.action = @selector(scaleModeChanged:);
 
-  [scaleVid add:scaleLabel];
-  [scaleVid add:scalePopup];
-  [stackView addArrangedSubview:scaleVid];
-}
+    // Add menu items
+    [scalePopup addItemWithTitle:@"Fill"];
+    [scalePopup addItemWithTitle:@"Fit"];
+    [scalePopup addItemWithTitle:@"Stretch"];
+    [scalePopup addItemWithTitle:@"Center"];
+    [scalePopup addItemWithTitle:@"HeightFill"];
+    // height-fill
 
+    // Load saved mode (default "fill")
+    NSString *savedMode =
+        [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
+    NSInteger selectedIndex = 0; // Default fill
+    if ([savedMode isEqualToString:@"fit"])
+      selectedIndex = 1;
+    else if ([savedMode isEqualToString:@"stretch"])
+      selectedIndex = 2;
+    else if ([savedMode isEqualToString:@"center"])
+      selectedIndex = 3;
+    else if ([savedMode isEqualToString:@"height-fill"])
+      selectedIndex = 4;
+
+    [scalePopup selectItemAtIndex:selectedIndex];
+
+    [scaleVid add:scaleLabel];
+    [scaleVid add:scalePopup];
+    [stackView addArrangedSubview:scaleVid];
+  }
 
   // --- Random Wallpaper Toggle ---
   {
@@ -896,22 +897,19 @@ NSTextField *CreateLabel(NSString *string) {
 }
 
 - (void)scaleModeChanged:(NSPopUpButton *)sender {
-  NSArray *modes = @[@"fill", @"fit", @"stretch", @"center", @"height-fill"];
+  NSArray *modes = @[ @"fill", @"fit", @"stretch", @"center", @"height-fill" ];
   NSString *selectedMode = modes[sender.indexOfSelectedItem];
-  
+
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   [defaults setObject:selectedMode forKey:@"scale_mode"];
   [defaults synchronize];
-  
+
   NSLog(@"Video scaling mode changed to: %@", selectedMode);
 
-  if(self.videoPath){
+  if (self.videoPath) {
     [self startWallpaperWithPath:self.videoPath];
   }
-  
-  
 }
-
 
 - (void)autoPauseToggleChanged:(NSSwitch *)sender {
   BOOL enabled = (sender.state == NSControlStateValueOn);
@@ -1472,6 +1470,9 @@ NSTextField *CreateLabel(NSString *string) {
         }
       }
       completionHandler:nil];
+
+    NSSize maxSize = NSMakeSize(CGFLOAT_MAX, MAX_HEIGHT);
+    [self.blurWindow setMaxSize:maxSize];
 }
 
 void killAllDaemons() {
@@ -1495,14 +1496,20 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   NSString *daemonPath =
       [appPath stringByAppendingPathComponent:daemonRelativePath];
 
-  float volume = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+  float volume =
+      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
   NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
-  NSString *scaleMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
+  NSString *scaleMode =
+      [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
   NSLog(@"Scaling mode: %@", scaleMode);
 
   const char *daemonPathC = [daemonPath UTF8String];
-  const char *args[] = {daemonPathC, [videoPath UTF8String],
-                        [imagePath UTF8String], [volumeStr UTF8String], [scaleMode UTF8String], NULL};
+  const char *args[] = {daemonPathC,
+                        [videoPath UTF8String],
+                        [imagePath UTF8String],
+                        [volumeStr UTF8String],
+                        [scaleMode UTF8String],
+                        NULL};
 
   pid_t pid;
   int status =
@@ -1523,9 +1530,9 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   usleep(300000);
 
   if (!videoPath || videoPath.length == 0) {
-        NSLog(@"ERROR: Invalid videoPath");
-        return;
-    }
+    NSLog(@"ERROR: Invalid videoPath");
+    return;
+  }
 
   g_videoPath = std::string([videoPath UTF8String]);
 
@@ -1574,8 +1581,7 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
 - (void)handleButtonClick:(NSButton *)sender {
   NSLog(@"Clicked: %@", sender.toolTip);
 
-  _videoPath =
-      [folderPath stringByAppendingPathComponent:sender.toolTip];
+  _videoPath = [folderPath stringByAppendingPathComponent:sender.toolTip];
 
   [self startWallpaperWithPath:_videoPath];
 }
@@ -1583,6 +1589,10 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
 
   CGFloat fixedWidth = 800;
+  CGFloat maxHeight = MAX_HEIGHT;
+  if (proposedFrameSize.height > maxHeight) {
+    return NSMakeSize(fixedWidth, maxHeight);
+  }
   return NSMakeSize(fixedWidth, proposedFrameSize.height);
 }
 - (void)openWallpaperFolder:(id)sender {
@@ -1793,11 +1803,16 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
                     defer:NO];
   [self.blurWindow setTitle:@"LiveWallpaper by Bios"];
   [self.blurWindow center];
-  [self.blurWindow setCollectionBehavior:NSWindowCollectionBehaviorMoveToActiveSpace];
+  [self.blurWindow
+      setCollectionBehavior:NSWindowCollectionBehaviorMoveToActiveSpace];
 
   [self.blurWindow makeKeyAndOrderFront:nil];
 
+  NSSize maxSize = NSMakeSize(CGFLOAT_MAX, 450);
+  self.blurWindow.maxSize = maxSize;
+
   self.blurWindow.delegate = self;
+
   if (@available(macOS 10.12.2, *)) {
     NSLog(@"Touchbar supported!");
     self.blurWindow.touchBar = [self makeTouchBar];
@@ -1848,6 +1863,8 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
       NSWindowTitleVisible; // or NSWindowTitleHidden
   self.blurWindow.titlebarAppearsTransparent = YES;
   self.blurWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
+
+  self.blurWindow.maxSize = NSMakeSize(CGFLOAT_MAX, MAX_HEIGHT);
 
   NSStackView *mainStack = [[NSStackView alloc] init];
   mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -1991,13 +2008,14 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
 }
 
 - (void)handleScreenUnlock:(NSNotification *)notification {
-    NSLog(@"🔓 Screen unlocked");
-    if (buttons.count > 0 && [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"]) {
-        NSLog(@"Loading Random Wallpaper...");
-        NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
-        NSButton *randomButton = buttons[randomIndex];
-        [randomButton performClick:nil];
-    }
+  NSLog(@"🔓 Screen unlocked");
+  if (buttons.count > 0 &&
+      [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"]) {
+    NSLog(@"Loading Random Wallpaper...");
+    NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+    NSButton *randomButton = buttons[randomIndex];
+    [randomButton performClick:nil];
+  }
 }
 
 - (void)applicationWillTerminate:(NSNotification *)notification {
