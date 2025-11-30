@@ -78,16 +78,52 @@ std::string run_command(const std::string &cmd) {
   return result;
 }
 
-bool set_wallpaper_all_spaces(const std::string &imagePath) {
-  // std::string cmd = "automator -i \"" + imagePath + "\"
-  // setDesktopPix.workflow";
-  std::string cmd =
-      "/usr/bin/osascript -e 'tell application \"System Events\" to set "
-      "picture of every desktop to POSIX file \"" +
-      imagePath + "\"'";
-  return std::system(cmd.c_str()) == 0;
-}
+// bool set_wallpaper_all_spaces(const std::string &imagePath) {
+//   // std::string cmd = "automator -i \"" + imagePath + "\"
+//   // setDesktopPix.workflow";
+//   std::string cmd =
+//       "/usr/bin/osascript -e 'tell application \"System Events\" to set "
+//       "picture of every desktop to POSIX file \"" +
+//       imagePath + "\"'";
+//   return std::system(cmd.c_str()) == 0;
+// }
 
+bool set_wallpaper_all_spaces(const std::string &imagePath) {
+    @autoreleasepool {
+        if (imagePath.empty()) {
+            NSLog(@"ERROR: Empty image path");
+            return false;
+        }
+        
+        NSString *nsPath = [NSString stringWithUTF8String:imagePath.c_str()];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:nsPath]) {
+            NSLog(@"ERROR: Image not found: %@", nsPath);
+            return false;
+        }
+        
+        NSURL *imageURL = [NSURL fileURLWithPath:nsPath];
+        NSArray<NSScreen *> *screens = [NSScreen screens];
+        
+        for (NSScreen *screen in screens) {
+            // Use empty options dictionary for standard behavior
+            NSDictionary *options = @{};
+            
+            NSError *error = nil;
+            BOOL success = [[NSWorkspace sharedWorkspace] setDesktopImageURL:imageURL
+                                                                       forScreen:screen
+                                                                        options:options
+                                                                          error:&error];
+            
+            if (!success) {
+                NSLog(@"Failed screen %@: %@", screen, error.localizedDescription);
+                return false;
+            }
+        }
+        
+        NSLog(@"✅ Set wallpaper on %lu screens (all spaces)", (unsigned long)screens.count);
+        return true;
+    }
+}
 
 void handleSpaceChange(NSNotification *note) {
   if (!set_wallpaper_all_spaces(frame)) {
@@ -868,8 +904,12 @@ NSTextField *CreateLabel(NSString *string) {
   [defaults synchronize];
   
   NSLog(@"Video scaling mode changed to: %@", selectedMode);
+
+  if(self.videoPath){
+    [self startWallpaperWithPath:self.videoPath];
+  }
   
-  [self startWallpaperWithPath:_videoPath];
+  
 }
 
 
