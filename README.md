@@ -1,3 +1,5 @@
+
+https://github.com/user-attachments/assets/c4eeca24-6210-4fd2-bbb8-40be39de1d40
 > [!NOTE]
 > ## I’ll be updating this repo from time to time with good features — Please be patient :)!
 
@@ -49,22 +51,21 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)`
 
 ## Gallery
-> Adaptive tray icon
-> 
-> ![Screenshot 2025-05-21 at 8 26 29 AM](https://github.com/user-attachments/assets/9afafdcc-b4d4-48ad-93fe-9341d09c53ff)
-> ![Screenshot 2025-05-21 at 8 27 18 AM](https://github.com/user-attachments/assets/5574540a-a78d-4da2-a6c0-fc1c84f28fc5)
+> <img width="185" height="134" alt="Screenshot 2025-11-30 at 1 52 01 PM" src="https://github.com/user-attachments/assets/0c91fb29-e729-485b-8f93-7080aed68881" />
+> <img width="185" height="134" alt="Screenshot 2025-11-30 at 1 51 53 PM" src="https://github.com/user-attachments/assets/7848d2fd-8cc4-4271-a4c0-2868bdf00422" />
+ 
 
 
 
 > ![Screenshot 2025-05-15 at 6 46 35 AM](https://github.com/user-attachments/assets/167b0c08-454f-4d53-9e65-8798aed6459f)
 
-> ![Screenshot 2025-05-21 at 8 26 46 AM](https://github.com/user-attachments/assets/441ee882-727e-4470-9d28-baa96466e151)
+> <img width="2560" height="1600" alt="Screenshot 2025-11-30 at 1 52 34 PM" src="https://github.com/user-attachments/assets/79a24ed8-cc5a-4246-87d0-9c93e04766f2" />
 
+> <img width="2560" height="1600" alt="Screenshot 2025-11-30 at 1 54 35 PM" src="https://github.com/user-attachments/assets/10466b02-77d5-4814-9fb7-a865e62a41ba" />
 
-> ![Screenshot 2025-05-15 at 6 46 25 AM](https://github.com/user-attachments/assets/4a0c9302-1892-44cc-9154-32987a0fd887)
+ 
 
-> [NOTE] This video shows outdated  software
-> 
-> https://github.com/user-attachments/assets/c98441e8-de90-456b-8b6d-2a79a1bc2998
+> https://github.com/user-attachments/assets/748c7078-1f99-4182-876f-08aa59d2bc63
+ 
 
 For license details, see [LICENSE](LICENSE).
