@@ -1,5 +1,3 @@
-
-https://github.com/user-attachments/assets/c4eeca24-6210-4fd2-bbb8-40be39de1d40
 > [!NOTE]
 > ## I’ll be updating this repo from time to time with good features — Please be patient :)!
 
