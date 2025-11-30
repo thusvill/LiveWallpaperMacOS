@@ -1,10 +1,10 @@
 > [!NOTE]
-> ## I’ll get back to checking and updating this repo after December — Sorry for the delay!
+> ## I’ll be updating this repo from time to time with good features — Please be patient :)!
 
 # LiveWallpaper App for MacOS 15+
 
 
-![Roller](https://github.com/user-attachments/assets/bc0eba9a-2e5a-4c2c-99cb-c0160c3312bb)
+![Roller](./asset/livewall.png)
 
 This is an open-source live wallpaper applicationn for MacOS 15+
 

@@ -351,10 +351,30 @@ NSString *getFolderPath(void) {
         Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
         CMTime midpoint = CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
 
-        NSError *error = nil;
-        CGImageRef thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
-                                                          actualTime:NULL
-                                                               error:&error];
+        __block CGImageRef thumbImageRef = NULL;
+        __block NSError *error = nil;
+        
+        if (@available(macOS 15.0, *)) {
+            // Use new async API for macOS 15+
+            dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+            [imageGenerator generateCGImageAsynchronouslyForTime:midpoint completionHandler:^(CGImageRef  _Nullable image, CMTime actualTime, NSError * _Nullable genError) {
+                if (image && !genError) {
+                    thumbImageRef = CGImageRetain(image);
+                } else {
+                    error = genError;
+                }
+                dispatch_semaphore_signal(semaphore);
+            }];
+            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+        } else {
+            // Use deprecated API for older macOS versions
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            thumbImageRef = [imageGenerator copyCGImageAtTime:midpoint
+                                                   actualTime:NULL
+                                                        error:&error];
+            #pragma clang diagnostic pop
+        }
 
         if (thumbImageRef && !error) {
             NSImage *thumbImage = [[NSImage alloc] initWithCGImage:thumbImageRef
@@ -383,7 +403,24 @@ NSString *getFolderPath(void) {
 }
 - (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL {
     AVAsset *asset = [AVAsset assetWithURL:videoURL];
-    AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+    
+    // Use synchronous loading for compatibility
+    __block AVAssetTrack *videoTrack = nil;
+    if (@available(macOS 15.0, *)) {
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        [asset loadTracksWithMediaType:AVMediaTypeVideo completionHandler:^(NSArray<AVAssetTrack *> * _Nullable tracks, NSError * _Nullable error) {
+            if (!error && tracks.count > 0) {
+                videoTrack = tracks.firstObject;
+            }
+            dispatch_semaphore_signal(semaphore);
+        }];
+        dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+    } else {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+        #pragma clang diagnostic pop
+    }
 
     if (!videoTrack) return @"";
 
@@ -594,6 +631,25 @@ NSTextField *CreateLabel(NSString *string) {
         [stackView addArrangedSubview:randomVid];
     }
 
+    // --- Auto-Pause When App is Focused ---
+    {
+        LineModule *autoPause = [[LineModule alloc] initWithFrame:NSZeroRect];
+        autoPause.translatesAutoresizingMaskIntoConstraints = NO;
+
+        NSTextField *autoPauseLabel = CreateLabel(@"Pause When App is Active");
+        autoPauseLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+        NSSwitch *autoPauseToggle = [[NSSwitch alloc] initWithFrame:NSZeroRect];
+        autoPauseToggle.translatesAutoresizingMaskIntoConstraints = NO;
+        autoPauseToggle.target = self;
+        autoPauseToggle.action = @selector(autoPauseToggleChanged:);
+        autoPauseToggle.state = [[NSUserDefaults standardUserDefaults] boolForKey:@"pauseOnAppFocus"] ? NSControlStateValueOn : NSControlStateValueOff;
+
+        [autoPause add:autoPauseLabel];
+        [autoPause add:autoPauseToggle];
+        [stackView addArrangedSubview:autoPause];
+    }
+
     // --- Video Volume ---
     {
         LineModule *videoVolume = [[LineModule alloc] initWithFrame:NSZeroRect];
@@ -666,7 +722,7 @@ NSTextField *CreateLabel(NSString *string) {
             NSTextField *permissionLabel = CreateLabel(@"Add this to LoginItems");
             permissionLabel.translatesAutoresizingMaskIntoConstraints = NO;
 
-            NSButton *permissionButton = CreateButton(@"Grant Permissions 􀮓", self, @selector(addLoginItem:));
+            NSButton *permissionButton = CreateButton(@"Grant Permissions", self, @selector(addLoginItem:));
             permissionButton.translatesAutoresizingMaskIntoConstraints = NO;
 
             [permissions add:permissionLabel];
@@ -686,6 +742,7 @@ NSTextField *CreateLabel(NSString *string) {
 
     // Fade-in animation
     [self.settingsWindow setAlphaValue:0.0];
+    [NSApp activateIgnoringOtherApps:YES];
     [self.settingsWindow makeKeyAndOrderFront:nil];
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.4;
@@ -696,6 +753,19 @@ NSTextField *CreateLabel(NSString *string) {
     BOOL enabled = (sender.state == NSControlStateValueOn);
     [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"random"];
     [[NSUserDefaults standardUserDefaults] synchronize];
+}
+
+- (void)autoPauseToggleChanged:(NSSwitch *)sender {
+    BOOL enabled = (sender.state == NSControlStateValueOn);
+    [[NSUserDefaults standardUserDefaults] setBool:enabled forKey:@"pauseOnAppFocus"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // Notify daemon about the setting change
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR("com.live.wallpaper.autoPauseChanged"),
+        NULL, NULL, true
+    );
 }
 
 - (void)clearCacheButton:(id)sender {
@@ -924,8 +994,23 @@ NSTextField *CreateLabel(NSString *string) {
           AVAsset *asset = [AVAsset assetWithURL:fileURL];
           BOOL isHEVC = NO;
 
-          for (AVAssetTrack *track in
-               [asset tracksWithMediaType:AVMediaTypeVideo]) {
+          // Get video tracks with compatibility for old and new APIs
+          __block NSArray<AVAssetTrack *> *videoTracks = nil;
+          if (@available(macOS 15.0, *)) {
+            dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+            [asset loadTracksWithMediaType:AVMediaTypeVideo completionHandler:^(NSArray<AVAssetTrack *> * _Nullable tracks, NSError * _Nullable error) {
+              videoTracks = tracks;
+              dispatch_semaphore_signal(semaphore);
+            }];
+            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+          } else {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+            #pragma clang diagnostic pop
+          }
+
+          for (AVAssetTrack *track in videoTracks) {
             CFArrayRef formatDescriptions =
                 (__bridge CFArrayRef)track.formatDescriptions;
             for (CFIndex i = 0; i < CFArrayGetCount(formatDescriptions); i++) {
@@ -1354,7 +1439,7 @@ const char *args[] = {
   }
 
   // Open folder in Finder
-  [[NSWorkspace sharedWorkspace] openFile:folderPath];
+  [[NSWorkspace sharedWorkspace] openURL:[NSURL fileURLWithPath:folderPath]];
 }
 // Touchbar
 - (NSTouchBar *)makeTouchBar {
@@ -1405,9 +1490,18 @@ const char *args[] = {
   } else if ([identifier isEqualToString:@"com.livewallpaper.reload"]) {
     NSCustomTouchBarItem *item =
         [[NSCustomTouchBarItem alloc] initWithIdentifier:identifier];
-    NSButton *button = [NSButton buttonWithTitle:@"􂣽"
-                                          target:self
-                                          action:@selector(reloadGrid:)];
+    NSButton *button;
+    if (@available(macOS 11.0, *)) {
+        NSImage *reloadIcon = [NSImage imageWithSystemSymbolName:@"arrow.clockwise"
+                                        accessibilityDescription:@"Reload"];
+        button = [NSButton buttonWithImage:reloadIcon
+                                    target:self
+                                    action:@selector(reloadGrid:)];
+    } else {
+        button = [NSButton buttonWithTitle:@"↻"
+                                    target:self
+                                    action:@selector(reloadGrid:)];
+    }
     item.view = button;
     return item;
   } else if ([identifier isEqualToString:@"com.livewallpaper.settings"]) {
@@ -1519,7 +1613,6 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
     
 [self.blurWindow makeKeyAndOrderFront:nil];
     
-  [self.blurWindow setShowsResizeIndicator:YES];
   self.blurWindow.delegate = self;
   if (@available(macOS 10.12.2, *)) {
     NSLog(@"Touchbar supported!");
@@ -1604,8 +1697,20 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
     LineModule *buttonPanel = [[LineModule alloc] initWithFrame:NSZeroRect];
     NSButton *settingsButton =
         CreateButton(@"⚙️", self, @selector(showSettingsWindow:));
-    NSButton *reloadButton =
-        CreateButton(@"􂣽", self, @selector(reloadGrid:));
+    
+    // Create reload button with proper system icon
+    NSButton *reloadButton = [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+    if (@available(macOS 11.0, *)) {
+        NSImage *reloadIcon = [NSImage imageWithSystemSymbolName:@"arrow.clockwise"
+                                        accessibilityDescription:@"Reload"];
+        [reloadButton setImage:reloadIcon];
+        [reloadButton setImagePosition:NSImageOnly];
+    } else {
+        [reloadButton setTitle:@"↻"];
+    }
+    [reloadButton setBezelStyle:NSBezelStyleRounded];
+    [reloadButton setTarget:self];
+    [reloadButton setAction:@selector(reloadGrid:)];
 
     [buttonPanel add:reloadButton];
     [buttonPanel add:settingsButton];
@@ -1618,6 +1723,7 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   gridContainer.spacing = 12;
   gridContainer.edgeInsets = NSEdgeInsetsMake(12, 12, 12, 12);
   gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
+  gridContainer.alignment = NSLayoutAttributeCenterX;  // Center the grid horizontally
   [gridContainer setWantsLayer:YES];
 
   NSScrollView *scrollView = [[NSScrollView alloc] init];
@@ -1631,19 +1737,12 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
   scrollView.documentView = gridContainer;
   scrollView.drawsBackground = NO;
 
-  scrollView.hasVerticalScroller = YES;
-  scrollView.hasHorizontalScroller = NO;
-  scrollView.drawsBackground = NO;
-  scrollView.documentView = gridContainer;
-
   gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
   [NSLayoutConstraint activateConstraints:@[
     [gridContainer.topAnchor
         constraintEqualToAnchor:scrollView.contentView.topAnchor],
-    [gridContainer.leadingAnchor
-        constraintEqualToAnchor:scrollView.contentView.leadingAnchor],
-    [gridContainer.trailingAnchor
-        constraintEqualToAnchor:scrollView.contentView.trailingAnchor],
+    [gridContainer.centerXAnchor
+        constraintEqualToAnchor:scrollView.contentView.centerXAnchor],
     [gridContainer.bottomAnchor
         constraintEqualToAnchor:scrollView.contentView.bottomAnchor],
   ]];
@@ -1661,6 +1760,11 @@ else if ([identifier isEqualToString:@"com.livewallpaper.volume.slider"]) {
                                    NSLayoutConstraintOrientationHorizontal];
 
   [self reloadGrid:nil];
+  
+  // Reload grid again after window is fully displayed to ensure proper centering
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self reloadGrid:nil];
+  });
 
   self.statusItem = [[NSStatusBar systemStatusBar]
       statusItemWithLength:NSSquareStatusItemLength];
