@@ -41,13 +41,13 @@ target_link_libraries(LiveWallpaper
     "-framework ServiceManagement"
 )
 
-add_subdirectory(Deamon)
+add_subdirectory(Daemon)
 
 add_custom_command(TARGET LiveWallpaper POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
         "$<TARGET_BUNDLE_CONTENT_DIR:LiveWallpaper>/MacOS"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:wallpaperdeamon>"
+        "$<TARGET_FILE:wallpaperdaemon>"
         "$<TARGET_BUNDLE_CONTENT_DIR:LiveWallpaper>/MacOS/"
-    COMMENT "Copying wallpaperdeamon into LiveWallpaper.app bundle"
+    COMMENT "Copying wallpaperdaemon into LiveWallpaper.app bundle"
 )
