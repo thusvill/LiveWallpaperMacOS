@@ -26,6 +26,7 @@
 @property(strong) NSMutableArray<AVPlayerLooper *> *loopers;
 @property(nonatomic, assign) BOOL autoPauseEnabled;
 @property(nonatomic, assign) BOOL wasPlayingBeforeSleep;
+@property(nonatomic, assign) BOOL screen_locked;
 @property(strong) NSTimer *checkTimer;
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath;
@@ -74,7 +75,8 @@
 
             if (videoTracks.count == 0) {
                 NSLog(@"No video tracks found in %@", videoPath);
-            } else {
+            } 
+             else {
                 AVAssetImageGenerator *imageGenerator =
                     [[AVAssetImageGenerator alloc] initWithAsset:asset];
                 imageGenerator.appliesPreferredTrackTransform = YES;
@@ -130,6 +132,7 @@
                         NSLog(@"Frame extraction failed: %@", error.localizedDescription);
                     }
                 });
+            
             }
         }
         // Observe screen lock/unlock
@@ -225,6 +228,9 @@
   self.wasPlayingBeforeSleep = (_players.firstObject.rate > 0);
   NSLog(@"[Daemon] Screen locked - saving playback state: %@", self.wasPlayingBeforeSleep ? @"playing" : @"paused");
   
+
+  self.screen_locked = true;
+
   for (AVQueuePlayer *player in _players) {
     [player pause];
   }
@@ -233,6 +239,7 @@
 - (void)screenUnlocked:(NSNotification *)note {
   NSLog(@"[Daemon] Screen unlocked");
   
+  self.screen_locked = false;
   // Resume if it was playing before sleep
   if (self.wasPlayingBeforeSleep) {
     NSLog(@"[Daemon] Resuming playback after screen unlock");
@@ -244,7 +251,7 @@
 }
 
 - (void)checkAndUpdatePlaybackState {
-    if (!self.autoPauseEnabled) {
+    if (!self.autoPauseEnabled ) {
         return;
     }
     
@@ -266,9 +273,6 @@
 
 - (BOOL)shouldPlayWallpaper {
     // If auto-pause is disabled, always play
-    if (!self.autoPauseEnabled) {
-        return YES;
-    }
     
     NSRunningApplication *activeApp = [[NSWorkspace sharedWorkspace] frontmostApplication];
     
@@ -282,6 +286,10 @@
     if (activeApp.isHidden) {
         return YES;
     }
+
+    if(self.screen_locked){
+        return NO;
+      }
     
     // Get all on-screen windows (this excludes minimized windows)
     CFArrayRef windowList = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements, kCGNullWindowID);
@@ -321,8 +329,26 @@
 }
 
 - (void)activeApplicationChanged:(NSNotification *)notification {
-    // Immediately check when app switches
-    [self checkAndUpdatePlaybackState];
+    
+    if(self.screen_locked)
+      for(AVQueuePlayer* player in _players){
+          [player pause];
+        }
+      return;
+      //[self checkAndUpdatePlaybackState];
+
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+    dispatch_get_main_queue(), ^{
+        if(self.screen_locked){
+            for(AVQueuePlayer* player in _players){
+              [player pause];
+            }
+
+            return;
+          }
+
+          [self checkAndUpdatePlaybackState];
+      });
 }
 
 - (void)setAutoPauseEnabled:(BOOL)enabled {
@@ -333,11 +359,7 @@
     NSLog(@"[Daemon] Auto-pause %@", enabled ? @"enabled" : @"disabled");
     
     // If disabled, ensure playback resumes
-    if (!enabled) {
-        for (AVQueuePlayer *player in _players) {
-            [player play];
-        }
-    } else {
+    if (enabled) {
         // If enabled, immediately check current state
         [self checkAndUpdatePlaybackState];
     }
@@ -392,7 +414,7 @@ int main(int argc, const char *argv[]) {
         [[VideoWallpaperDaemon alloc] initWithVideo:videoPath
                                         frameOutput:framePath];
 
-CFNotificationCenterAddObserver(
+ CFNotificationCenterAddObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
             (__bridge const void *)(daemon),
             VolumeChangedCallback,
