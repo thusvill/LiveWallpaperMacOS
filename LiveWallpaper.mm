@@ -88,30 +88,6 @@ bool set_wallpaper_all_spaces(const std::string &imagePath) {
   return std::system(cmd.c_str()) == 0;
 }
 
-bool set_wallpaper(const std::string &imagePath) {
-  NSString *imgPath = [NSString stringWithUTF8String:imagePath.c_str()];
-  NSURL *imgURL = [NSURL fileURLWithPath:imgPath];
-  NSError *err = nil;
-
-  NSDictionary *options = @{
-    NSWorkspaceDesktopImageAllowClippingKey : @YES,
-    NSWorkspaceDesktopImageScalingKey : @(NSImageScaleProportionallyUpOrDown)
-  };
-
-  for (NSScreen *screen in [NSScreen screens]) {
-    BOOL success = [[NSWorkspace sharedWorkspace] setDesktopImageURL:imgURL
-                                                           forScreen:screen
-                                                             options:options
-                                                               error:&err];
-    if (!success || err) {
-      std::cerr << "Failed to set wallpaper for screen: " <<
-          [[err localizedDescription] UTF8String] << "\n";
-      return false;
-    }
-  }
-
-  return true;
-}
 
 void handleSpaceChange(NSNotification *note) {
   if (!set_wallpaper_all_spaces(frame)) {
@@ -151,6 +127,8 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @property(strong) NSTextField *precentage;
 @property(strong) NSTextField *touchbar_volume;
 @property(strong) NSPopoverTouchBarItem *volumePopoverItem;
+
+@property(strong) NSString *videoPath;
 
 @end
 
@@ -645,11 +623,49 @@ NSTextField *CreateLabel(NSString *string) {
     NSButton *optimizeButton =
         CreateButton(@"Optimize 🛠️", self, @selector(convertCodec:));
     optimizeButton.translatesAutoresizingMaskIntoConstraints = NO;
+    optimizeButton.enabled = false;
 
     [optimizeVideos add:optimizeLabel];
     [optimizeVideos add:optimizeButton];
     [stackView addArrangedSubview:optimizeVideos];
   }
+
+  // --- Video Scaling Mode Selector ---
+{
+  LineModule *scaleVid = [[LineModule alloc] initWithFrame:NSZeroRect];
+  scaleVid.translatesAutoresizingMaskIntoConstraints = NO;
+
+  NSTextField *scaleLabel = CreateLabel(@"Video Scaling Mode");
+  scaleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+  NSPopUpButton *scalePopup = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+  scalePopup.translatesAutoresizingMaskIntoConstraints = NO;
+  scalePopup.target = self;
+  scalePopup.action = @selector(scaleModeChanged:);
+  
+  // Add menu items
+  [scalePopup addItemWithTitle:@"Fill"];
+  [scalePopup addItemWithTitle:@"Fit"];
+  [scalePopup addItemWithTitle:@"Stretch"];
+  [scalePopup addItemWithTitle:@"Center"];
+  [scalePopup addItemWithTitle:@"HeightFill"];
+  //height-fill
+  
+  // Load saved mode (default "fill")
+  NSString *savedMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
+  NSInteger selectedIndex = 0; // Default fill
+  if ([savedMode isEqualToString:@"fit"]) selectedIndex = 1;
+  else if ([savedMode isEqualToString:@"stretch"]) selectedIndex = 2;
+  else if ([savedMode isEqualToString:@"center"]) selectedIndex = 3;
+  else if([savedMode isEqualToString:@"height-fill"]) selectedIndex = 4;
+  
+  [scalePopup selectItemAtIndex:selectedIndex];
+
+  [scaleVid add:scaleLabel];
+  [scaleVid add:scalePopup];
+  [stackView addArrangedSubview:scaleVid];
+}
+
 
   // --- Random Wallpaper Toggle ---
   {
@@ -842,6 +858,20 @@ NSTextField *CreateLabel(NSString *string) {
                                           forKey:@"random_unlock"];
   [[NSUserDefaults standardUserDefaults] synchronize];
 }
+
+- (void)scaleModeChanged:(NSPopUpButton *)sender {
+  NSArray *modes = @[@"fill", @"fit", @"stretch", @"center", @"height-fill"];
+  NSString *selectedMode = modes[sender.indexOfSelectedItem];
+  
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  [defaults setObject:selectedMode forKey:@"scale_mode"];
+  [defaults synchronize];
+  
+  NSLog(@"Video scaling mode changed to: %@", selectedMode);
+  
+  [self startWallpaperWithPath:_videoPath];
+}
+
 
 - (void)autoPauseToggleChanged:(NSSwitch *)sender {
   BOOL enabled = (sender.state == NSControlStateValueOn);
@@ -1425,13 +1455,14 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   NSString *daemonPath =
       [appPath stringByAppendingPathComponent:daemonRelativePath];
 
-  float volume =
-      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+  float volume = [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
   NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
+  NSString *scaleMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
+  NSLog(@"Scaling mode: %@", scaleMode);
 
   const char *daemonPathC = [daemonPath UTF8String];
   const char *args[] = {daemonPathC, [videoPath UTF8String],
-                        [imagePath UTF8String], [volumeStr UTF8String], NULL};
+                        [imagePath UTF8String], [volumeStr UTF8String], [scaleMode UTF8String], NULL};
 
   pid_t pid;
   int status =
@@ -1449,6 +1480,12 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   }
   [self.notificationObservers removeAllObjects];
   killAllDaemons();
+  usleep(300000);
+
+  if (!videoPath || videoPath.length == 0) {
+        NSLog(@"ERROR: Invalid videoPath");
+        return;
+    }
 
   g_videoPath = std::string([videoPath UTF8String]);
 
@@ -1497,10 +1534,10 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
 - (void)handleButtonClick:(NSButton *)sender {
   NSLog(@"Clicked: %@", sender.toolTip);
 
-  NSString *videoPath =
+  _videoPath =
       [folderPath stringByAppendingPathComponent:sender.toolTip];
 
-  [self startWallpaperWithPath:videoPath];
+  [self startWallpaperWithPath:_videoPath];
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
@@ -1716,6 +1753,7 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
                     defer:NO];
   [self.blurWindow setTitle:@"LiveWallpaper by Bios"];
   [self.blurWindow center];
+  [self.blurWindow setCollectionBehavior:NSWindowCollectionBehaviorMoveToActiveSpace];
 
   [self.blurWindow makeKeyAndOrderFront:nil];
 
