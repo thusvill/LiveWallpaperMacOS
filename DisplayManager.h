@@ -10,7 +10,11 @@
 #include <signal.h>
 #include <unistd.h>
 
-bool KillProcessByPID(pid_t pid) {
+inline CGDirectDisplayID GetDisplayID(NSScreen *screen) {
+  NSNumber *num = [screen deviceDescription][@"NSScreenNumber"];
+  return (CGDirectDisplayID)[num unsignedIntValue];
+}
+inline bool KillProcessByPID(pid_t pid) {
   if (pid <= 1) {
 
     return false;
@@ -67,18 +71,17 @@ static void PrintDisplays(const std::list<Display> &displays) {
 static void ScanDisplays() {
   NSArray *screens = [NSScreen screens];
 
-  // Build a set of currently connected display IDs
   std::set<CGDirectDisplayID> currentDisplayIDs;
   for (NSScreen *screen in screens) {
     NSDictionary *desc = [screen deviceDescription];
-    NSNumber *screenNum = desc[@"NSScreenNumber"];
-    CGDirectDisplayID displayID = [screenNum unsignedIntValue];
+    CGDirectDisplayID displayID = GetDisplayID(screen);
     currentDisplayIDs.insert(displayID);
   }
 
   // Remove any displays that are no longer connected
   for (auto it = displays.begin(); it != displays.end();) {
     if (currentDisplayIDs.find(it->screen) == currentDisplayIDs.end()) {
+      KillProcessByPID(it->daemon);
       it = displays.erase(it);
     } else {
       ++it;
@@ -123,11 +126,11 @@ static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
   displays.push_back(newDisplay);
 }
 
-NSString *displayNameForDisplayID(CGDirectDisplayID displayID) {
+inline NSString *displayNameForDisplayID(CGDirectDisplayID displayID) {
   for (NSScreen *screen in [NSScreen screens]) {
     NSDictionary *desc = [screen deviceDescription];
-    NSNumber *screenNum = desc[@"NSScreenNumber"];
-    if ([screenNum unsignedIntValue] == displayID) {
+    CGDirectDisplayID screenID = GetDisplayID(screen);
+    if (screenID == displayID) {
       // Get localized name (if available)
       NSString *name = desc[@"NSDeviceName"];
       if (name.length > 0)

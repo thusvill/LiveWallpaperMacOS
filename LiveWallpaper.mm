@@ -26,10 +26,16 @@
 #import <ServiceManagement/SMAppService.h>
 #import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <list>
+
+#import <CoreGraphics/CoreGraphics.h>
+#import <IOKit/graphics/IOGraphicsLib.h>
+
 #include <unistd.h>
 
 #import "DisplayManager.h"
 #import "LineModule.h"
+#import "SaveSystem.h"
 
 #include <array>
 #include <cstdlib>
@@ -173,14 +179,57 @@ NSString *getFolderPath(void) {
 
   return path;
 }
+- (void)UnlockHandle:(NSNotification *)note {
+  NSLog(@"Appling random wallpaper on Screenunlock...");
+  if (buttons.count == 0)
+    return;
+
+  BOOL randomUnlock =
+      [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"];
+  if (!randomUnlock)
+    return;
+  
+  ScanDisplays();
+  PrintDisplays(displays);
+  
+
+  _selectedDisplays.clear();
+
+  for (Display display : displays) {
+    _selectedDisplays.push_back(display.screen);
+    NSLog(@"Loading Random Wallpaper...");
+    NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+    NSButton *randomButton = buttons[randomIndex];
+    [randomButton performClick:nil];
+    NSLog(@"Random wallpaper on %u, %@", display.screen, randomButton.toolTip);
+    _selectedDisplays.clear();
+  }
+
+  _selectedDisplays.clear();
+}
+
 - (void)screensDidChange:(NSNotification *)note {
   // [self startWallpaperWithPath:[NSString
   //                                  stringWithUTF8String:g_videoPath.c_str()]];
+
   ScanDisplays();
+
   usleep(1);
   dispatch_async(dispatch_get_main_queue(), ^{
     AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
     [appDelegate reloadDock];
+    if (!displays.empty()) {
+      for (Display display : displays) {
+        _selectedDisplays.clear();
+        _selectedDisplays.push_back(display.screen);
+
+        [self startWallpaperWithPath:[NSString
+                                         stringWithUTF8String:display.videoPath
+                                                                  .c_str()]];
+
+        _selectedDisplays.clear();
+      }
+    }
   });
 }
 
@@ -1529,6 +1578,13 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 }
 
 - (void)startWallpaperWithPath:(NSString *)videoPath {
+
+  // If display selection empty -> select all displays
+  if (_selectedDisplays.empty()) {
+    for (auto ID : displays) {
+      _selectedDisplays.push_back(ID.screen);
+    }
+  }
   LogMemoryUsage();
   for (id observer in self.notificationObservers) {
     [[NSNotificationCenter defaultCenter] removeObserver:observer];
@@ -1801,13 +1857,10 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
               }];
 
   [[[NSWorkspace sharedWorkspace] notificationCenter]
-      addObserverForName:NSWorkspaceScreensDidWakeNotification
-                  object:nil
-                   queue:[NSOperationQueue mainQueue]
-              usingBlock:^(NSNotification *_Nonnull note){
-                  //[self handleScreenUnlock:note];
-                  // TODO: Add handler on screen lock
-              }];
+      addObserver:self
+         selector:@selector(UnlockHandle:)
+             name:NSWorkspaceScreensDidWakeNotification
+           object:nil];
 
   NSRect frame = NSMakeRect(0, 0, 800, 600);
   self.blurWindow = [[NSWindow alloc]
@@ -1987,6 +2040,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 
   [self setupFloatingDock];
   ScanDisplays();
+  [self LoadDisplayConfig];
   usleep(1);
   dispatch_async(dispatch_get_main_queue(), ^{
     AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
@@ -2022,13 +2076,13 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
 
-  if (buttons.count > 0 &&
-      [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
-    NSLog(@"Loading Random Wallpaper...");
-    NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
-    NSButton *randomButton = buttons[randomIndex];
-    [randomButton performClick:nil];
-  }
+  // if (buttons.count > 0 &&
+  //     [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
+  //   NSLog(@"Loading Random Wallpaper...");
+  //   NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+  //   NSButton *randomButton = buttons[randomIndex];
+  //   [randomButton performClick:nil];
+  // }
 }
 
 - (void)setupFloatingDock {
@@ -2042,7 +2096,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   dockView.translatesAutoresizingMaskIntoConstraints = NO;
   [content addSubview:dockView];
 
-  CGFloat dockHeight = 60;   // dock height
+  CGFloat dockHeight = 80;   // dock height
   CGFloat bottomOffset = 20; // distance from bottom
 
   // Floating dock constraints
@@ -2121,20 +2175,19 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 
   for (const Display &disp : displays) {
     NSLog(@"Button creating for : %@", displayNameForDisplayID(disp.screen));
-    NSButton *btn =
-        [NSButton buttonWithTitle:displayNameForDisplayID(disp.screen)
-                           target:self
-                           action:@selector(dockButtonToggled:)];
-    btn.tag = disp.screen;
-    btn.bezelStyle = NSBezelStyleRounded;
-    [btn setButtonType:NSButtonTypeToggle];
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.wantsLayer = YES;
+    // NSButton *btn =
+    //     [NSButton buttonWithTitle:displayNameForDisplayID(disp.screen)
+    //                        target:self
+    //                        action:@selector(dockButtonToggled:)];
 
-    // Button height matches dock height
-    [NSLayoutConstraint
-        activateConstraints:@[ [btn.heightAnchor
-                                constraintEqualToConstant:dockHeight - 10] ]];
+    CGFloat button_width = 200;
+
+    NSButton *btn = CreateDisplayButtonWithSize(disp.screen, self,
+                                                @selector(dockButtonToggled:),
+                                                button_width, dockHeight);
+
+    btn.tag = disp.screen;
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
 
     // Glow styling
     btn.layer.cornerRadius = 6;
@@ -2146,9 +2199,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 
     [self.dockStack addArrangedSubview:btn];
 
-    // Estimate button width for dock resizing
-    [btn sizeToFit];
-    totalWidth += btn.frame.size.width + buttonSpacing;
+    totalWidth += button_width + buttonSpacing;
   }
 
   // Update dock container width dynamically
@@ -2161,17 +2212,20 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 }
 
 // Toggle button with multi-selection & yellow glow
-- (void)dockButtonToggled:(NSButton *)sender {
-  if ([sender state] == NSControlStateValueOn) {
-    sender.layer.backgroundColor =
-        [NSColor colorWithCalibratedRed:1 green:1 blue:0 alpha:0.2].CGColor;
-    sender.layer.shadowOpacity = 1.0;
-  } else {
-    sender.layer.backgroundColor = [NSColor clearColor].CGColor;
-    sender.layer.shadowOpacity = 0;
-  }
+- (IBAction)dockButtonToggled:(NSButton *)sender {
 
-  _selectedDisplays = {};
+  if ([sender state] == NSControlStateValueOn) {
+
+    sender.layer.borderColor = [NSColor yellowColor].CGColor;
+    sender.layer.shadowOpacity = 1;
+    sender.layer.borderWidth = 2.5;
+
+  } else {
+    sender.layer.borderColor = [NSColor colorWithWhite:1.0 alpha:0.4].CGColor;
+    sender.layer.shadowOpacity = 0;
+    sender.layer.borderWidth = 1.5;
+  }
+  _selectedDisplays.clear();
   for (NSButton *btn in self.dockStack.arrangedSubviews) {
     if ([btn state] == NSControlStateValueOn) {
       _selectedDisplays.push_back(btn.tag);
@@ -2206,7 +2260,11 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 }
 
 - (void)quitApp {
+
+  SaveDisplayConfig();
+
   NSLog(@"💥 Quit triggered");
+
   [NSApp terminate:nil];
 }
 
@@ -2252,6 +2310,161 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
         if (completion)
           completion();
       }];
+}
+
+NSButton *CreateDisplayButtonWithSize(CGDirectDisplayID displayID, id target,
+                                      SEL action, CGFloat width,
+                                      CGFloat height) {
+  NSString *displayName = @"Unknown Display";
+  NSString *resolution = @"";
+  CGSize size = CGSizeZero;
+
+  if (CGDisplayIsActive(displayID)) {
+    size.width = CGDisplayPixelsWide(displayID);
+    size.height = CGDisplayPixelsHigh(displayID);
+    resolution =
+        [NSString stringWithFormat:@"%.0fx%.0f", size.width, size.height];
+
+    for (NSScreen *screen in [NSScreen screens]) {
+      NSDictionary *deviceDesc = screen.deviceDescription;
+      NSNumber *screenNumber = deviceDesc[@"NSScreenNumber"];
+      if (screenNumber && [screenNumber unsignedLongValue] == displayID) {
+        displayName = screen.localizedName;
+        break;
+      }
+    }
+  }
+
+  NSSize imageSize = NSMakeSize(width, height);
+  NSImage *image = [[NSImage alloc] initWithSize:imageSize];
+  [image lockFocus];
+
+  [[NSColor clearColor] set];
+  NSRectFill(NSMakeRect(0, 0, width, height));
+
+  // Dynamic font sizing based on button size
+  CGFloat nameFontSize = MAX(12, height * 0.15);
+  CGFloat resFontSize = MAX(10, height * 0.1);
+  CGFloat arrowFontSize = MAX(12, height * 0.12);
+
+  NSDictionary *nameAttrs = @{
+    NSFontAttributeName : [NSFont boldSystemFontOfSize:nameFontSize],
+    NSForegroundColorAttributeName : [NSColor whiteColor]
+  };
+  NSDictionary *resAttrs = @{
+    NSFontAttributeName : [NSFont systemFontOfSize:resFontSize],
+    NSForegroundColorAttributeName : [NSColor lightGrayColor]
+  };
+  NSDictionary *arrowAttrs = @{
+    NSFontAttributeName : [NSFont systemFontOfSize:arrowFontSize],
+    NSForegroundColorAttributeName : [NSColor whiteColor]
+  };
+
+  NSSize nameSize = [displayName sizeWithAttributes:nameAttrs];
+  NSSize resSize = [resolution sizeWithAttributes:resAttrs];
+  CGFloat margin = width * 0.04;
+  CGFloat arrowSize = arrowFontSize;
+
+  CGFloat nameX = (width - nameSize.width) / 2;
+  CGFloat nameY = height - nameSize.height - margin - arrowSize;
+
+  CGFloat resX = (width - resSize.width) / 2;
+  CGFloat resY = margin;
+
+  // Draw display name
+  [displayName drawAtPoint:NSMakePoint(nameX, nameY) withAttributes:nameAttrs];
+  // Draw resolution
+  [resolution drawAtPoint:NSMakePoint(resX, resY) withAttributes:resAttrs];
+  // Draw arrows
+  NSString *topLeftArrow = @"↖";
+  NSString *bottomRightArrow = @"↘";
+  [topLeftArrow drawAtPoint:NSMakePoint(margin, height - arrowSize - margin)
+             withAttributes:arrowAttrs];
+  [bottomRightArrow drawAtPoint:NSMakePoint(width - arrowSize - margin, margin)
+                 withAttributes:arrowAttrs];
+
+  [image unlockFocus];
+
+  NSButton *button =
+      [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
+  [button setButtonType:NSButtonTypeToggle];
+  button.target = target;
+  button.action = action;
+  button.image = image;
+  button.imagePosition = NSImageOnly;
+  button.bezelStyle = NSBezelStyleRegularSquare;
+  button.wantsLayer = YES;
+  button.layer.cornerRadius = 12;
+  button.layer.masksToBounds = YES;
+  button.bordered = NO;
+  button.layer.backgroundColor = [NSColor clearColor].CGColor;
+
+  button.layer.borderWidth = 1.5;
+  button.layer.borderColor = [NSColor colorWithWhite:1.0 alpha:0.4].CGColor;
+
+  return [button autorelease];
+}
+
+void SaveDisplayConfig() { SaveSystem::Save(displays); }
+
+- (void)LoadDisplayConfig {
+  ScanDisplays();
+  std::list<Display> detected = displays;
+
+  displays.clear();
+  displays = SaveSystem::Load();
+  if (displays.empty()) {
+    ScanDisplays();
+  }
+
+  if (!displays.empty()) {
+
+    displays.remove_if([&detected](const Display &d) {
+      auto it = std::find_if(
+          detected.begin(), detected.end(),
+          [&d](const Display &det) { return det.screen == d.screen; });
+      return it == detected.end();
+    });
+
+    if (buttons.count > 0 &&
+        [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
+      for (const Display &det : detected) {
+        auto it = std::find_if(
+            displays.begin(), displays.end(),
+            [&det](const Display &d) { return d.screen == det.screen; });
+        if (it == displays.end()) {
+          displays.push_back(det);
+        }
+      }
+    }
+
+    for (Display display : displays) {
+      if (std::any_of(detected.begin(), detected.end(),
+                      [&display](const Display &d) {
+                        return d.screen == display.screen;
+                      })) {
+
+        _selectedDisplays.clear();
+        _selectedDisplays.push_back(display.screen);
+
+        if (buttons.count > 0 && [[NSUserDefaults standardUserDefaults]
+                                     boolForKey:@"random"] == TRUE) {
+          NSLog(@"Loading Random Wallpaper...");
+          NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
+          NSButton *randomButton = buttons[randomIndex];
+          [randomButton performClick:nil];
+        } else {
+
+          [self
+              startWallpaperWithPath:[NSString
+                                         stringWithUTF8String:display.videoPath
+                                                                  .c_str()]];
+        }
+
+        _selectedDisplays.clear();
+      }
+    }
+  }
 }
 
 @end

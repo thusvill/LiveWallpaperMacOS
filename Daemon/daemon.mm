@@ -21,6 +21,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #include <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
+#include <cstdlib>
 
 @interface VideoWallpaperDaemon : NSObject
 @property(strong) NSMutableArray<NSWindow *> *windows;
@@ -35,6 +36,7 @@
 @property(nonatomic, strong) NSString *scalingMode;
 @property(nonatomic, strong) NSString *framePath;
 @property(nonatomic, assign) NSScreen *targetScreen;
+@property(nonatomic, assign) AVAsset *asset;
 
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath
@@ -64,22 +66,22 @@
 
     // Start a timer to periodically check if we should play/pause (for
     // minimized windows detection)
-    _checkTimer = [NSTimer
-        scheduledTimerWithTimeInterval:1.0
-                                target:self
-                              selector:@selector(checkAndUpdatePlaybackState)
-                              userInfo:nil
-                               repeats:YES];
+    // _checkTimer = [NSTimer
+    //     scheduledTimerWithTimeInterval:1.0
+    //                             target:self
+    //                           selector:@selector(checkAndUpdatePlaybackState)
+    //                           userInfo:nil
+    //                            repeats:YES];
 
     if (framePath && videoPath) {
       NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
-      AVAsset *asset = [AVAsset assetWithURL:videoURL];
+      _asset = [AVAsset assetWithURL:videoURL];
 
       // Check for video tracks with compatibility
       __block NSArray<AVAssetTrack *> *videoTracks = nil;
       if (@available(macOS 15.0, *)) {
         dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-        [asset
+        [_asset
             loadTracksWithMediaType:AVMediaTypeVideo
                   completionHandler:^(NSArray<AVAssetTrack *> *_Nullable tracks,
                                       NSError *_Nullable error) {
@@ -90,7 +92,7 @@
       } else {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+        videoTracks = [_asset tracksWithMediaType:AVMediaTypeVideo];
 #pragma clang diagnostic pop
       }
 
@@ -98,7 +100,7 @@
         NSLog(@"No video tracks found in %@", videoPath);
       } else {
         AVAssetImageGenerator *imageGenerator =
-            [[AVAssetImageGenerator alloc] initWithAsset:asset];
+            [[AVAssetImageGenerator alloc] initWithAsset:_asset];
         imageGenerator.appliesPreferredTrackTransform = YES;
 
         // Full resolution (4K)
@@ -109,9 +111,9 @@
         imageGenerator.requestedTimeToleranceAfter = kCMTimeZero;
 
         // Calculate midpoint
-        Float64 midpointSec = CMTimeGetSeconds(asset.duration) / 2.0;
+        Float64 midpointSec = CMTimeGetSeconds(_asset.duration) / 2.0;
         CMTime midpoint =
-            CMTimeMakeWithSeconds(midpointSec, asset.duration.timescale);
+            CMTimeMakeWithSeconds(midpointSec, _asset.duration.timescale);
         NSLog(@"Scheduled midpoint extraction at %f seconds", midpointSec);
 
         // Perform extraction after run loop starts
@@ -191,118 +193,92 @@
   NSArray<NSScreen *> *screens = [NSScreen screens];
   NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
 
-  for (NSScreen *screen in screens) {
-    if (_targetScreen.CGDirectDisplayID == screen.CGDirectDisplayID &&
-        screen != nullptr) {
+  NSRect visibleFrame = _targetScreen.frame;
 
-      NSRect visibleFrame = screen.frame;
+  NSWindow *window =
+      [[NSWindow alloc] initWithContentRect:visibleFrame
+                                  styleMask:NSWindowStyleMaskBorderless
+                                    backing:NSBackingStoreBuffered
+                                      defer:NO
+                                     screen:_targetScreen];
 
-      NSWindow *window =
-          [[NSWindow alloc] initWithContentRect:visibleFrame
-                                      styleMask:NSWindowStyleMaskBorderless
-                                        backing:NSBackingStoreBuffered
-                                          defer:NO
-                                         screen:screen];
+  window.level = kCGDesktopWindowLevel - 1;
+  // window.level = CGWindowLevelForKey(kCGDesktopWindowLevelKey - 1);
 
-      // window.level = kCGDesktopWindowLevel;
-      window.level = CGWindowLevelForKey(kCGDesktopWindowLevelKey);
-
-      [window
-          setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
+  [window setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
                                 NSWindowCollectionBehaviorFullScreenAuxiliary |
                                 NSWindowCollectionBehaviorStationary |
                                 NSWindowCollectionBehaviorIgnoresCycle];
 
-      [window setOpaque:NO];
-      [window setBackgroundColor:[NSColor clearColor]];
+  [window setOpaque:NO];
+  [window setBackgroundColor:[NSColor clearColor]];
 
-      [window setHasShadow:NO];
-      [window.contentView setWantsLayer:YES];
+  [window setHasShadow:NO];
+  [window.contentView setWantsLayer:YES];
 
-      [window orderFrontRegardless];
-      [window setSharingType:NSWindowSharingNone];
+  //[window orderFrontRegardless];
+  [window setSharingType:NSWindowSharingNone];
 
-      [window setIgnoresMouseEvents:YES];
+  [window setIgnoresMouseEvents:YES];
 
-      {
-        pid_t myPID = getpid();
-        CFArrayRef windows = CGWindowListCopyWindowInfo(
-            kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
-        for (NSDictionary *win in (__bridge NSArray *)windows) {
-          NSNumber *ownerPID = win[(NSString *)kCGWindowOwnerPID];
-          if (ownerPID && ownerPID.intValue == myPID) {
-            NSNumber *layer = win[(NSString *)kCGWindowLayer];
-            NSDictionary *bounds = win[(NSString *)kCGWindowBounds];
-            NSString *name = win[(NSString *)kCGWindowName] ?: @"(no name)";
-            NSLog(@"[DIAG] myWindow: name=%@ layer=%@ bounds=%@", name, layer,
-                  bounds);
-          }
-        }
-        if (windows)
-          CFRelease(windows);
+  _asset = [AVAsset assetWithURL:videoURL];
+  AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:_asset];
+  AVQueuePlayer *player = [AVQueuePlayer queuePlayerWithItems:@[]];
+  AVPlayerLooper *looper = [AVPlayerLooper playerLooperWithPlayer:player
+                                                     templateItem:item];
 
-        // Also check that the view's layer exists
-        NSLog(@"[DIAG] window.screen=%@ window.level=%ld contentView.layer=%@",
-              window.screen, (long)window.level, window.contentView.layer);
-      }
+  [window.contentView setWantsLayer:YES];
+  AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
 
-      AVAsset *asset = [AVAsset assetWithURL:videoURL];
-      AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:asset];
-      AVQueuePlayer *player = [AVQueuePlayer queuePlayerWithItems:@[]];
-      AVPlayerLooper *looper = [AVPlayerLooper playerLooperWithPlayer:player
-                                                         templateItem:item];
+  if ([_scalingMode isEqualToString:@"fit"]) {
+    layer.videoGravity = AVLayerVideoGravityResizeAspect;
+  } else if ([_scalingMode isEqualToString:@"stretch"]) {
+    layer.videoGravity = AVLayerVideoGravityResize;
+  } else if ([_scalingMode isEqualToString:@"center"]) {
+    layer.videoGravity = AVLayerVideoGravityResizeAspect;
+  } else if ([_scalingMode isEqualToString:@"fill"]) {
 
-      [window.contentView setWantsLayer:YES];
-      AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
+    layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+  } else {
 
-      if ([_scalingMode isEqualToString:@"fit"]) {
-        layer.videoGravity = AVLayerVideoGravityResizeAspect;
-      } else if ([_scalingMode isEqualToString:@"stretch"]) {
-        layer.videoGravity = AVLayerVideoGravityResize;
-      } else if ([_scalingMode isEqualToString:@"center"]) {
-        layer.videoGravity = AVLayerVideoGravityResizeAspect;
-      } else if ([_scalingMode isEqualToString:@"fill"]) {
+    layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
 
-        layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-      } else {
-
-        layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-
-        layer.anchorPoint = CGPointMake(0.5, 0.5);
-        layer.position = CGPointMake(CGRectGetMidX(visibleFrame),
-                                     CGRectGetMidY(visibleFrame));
-      }
-
-      layer.frame = window.contentView.bounds;
-
-      if ([_scalingMode isEqualToString:@"center"]) {
-        layer.position = CGPointMake(CGRectGetMidX(visibleFrame),
-                                     CGRectGetMidY(visibleFrame));
-      }
-
-      layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
-      layer.needsDisplayOnBoundsChange = YES;
-      layer.actions = @{@"contents" : [NSNull null]};
-      [window.contentView.layer addSublayer:layer];
-
-      [window setFrame:visibleFrame display:YES];
-
-      [window makeKeyAndOrderFront:nil];
-
-      player.volume = [[NSUserDefaults standardUserDefaults]
-          floatForKey:@"wallpapervolume"];
-      player.muted = NO;
-      [player play];
-
-      [_windows addObject:window];
-      [_players addObject:player];
-      [_playerLayers addObject:layer];
-      [_loopers addObject:looper];
-
-      NSLog(@"✅ Screen %@ visibleFrame: %@", screen,
-            NSStringFromRect(visibleFrame));
-    }
+    layer.anchorPoint = CGPointMake(0.5, 0.5);
+    layer.position =
+        CGPointMake(CGRectGetMidX(visibleFrame), CGRectGetMidY(visibleFrame));
   }
+
+  layer.frame = window.contentView.bounds;
+
+  if ([_scalingMode isEqualToString:@"center"]) {
+    layer.position =
+        CGPointMake(CGRectGetMidX(visibleFrame), CGRectGetMidY(visibleFrame));
+  }
+
+  layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+  layer.needsDisplayOnBoundsChange = NO;
+  layer.actions = @{@"contents" : [NSNull null]};
+  [window.contentView.layer addSublayer:layer];
+
+  [window setFrame:visibleFrame display:YES];
+
+  [window makeKeyAndOrderFront:nil];
+
+  player.volume =
+      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+  player.muted = NO;
+  [player play];
+
+  player.currentItem.preferredMaximumResolution = CGSizeMake(
+      _targetScreen.frame.size.width, _targetScreen.frame.size.height);
+
+  [_windows addObject:window];
+  [_players addObject:player];
+  [_playerLayers addObject:layer];
+  [_loopers addObject:looper];
+
+  NSLog(@"✅ Screen %@ visibleFrame: %@", _targetScreen,
+        NSStringFromRect(visibleFrame));
 }
 
 - (void)screenLocked:(NSNotification *)note {
@@ -340,114 +316,159 @@
   [_windows removeAllObjects];
   [_players removeAllObjects];
   [_playerLayers removeAllObjects];
+  [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
 }
+
+// - (BOOL)shouldPlayWallpaper {
+//   // If auto-pause is disabled, always play
+
+//   NSRunningApplication *activeApp =
+//       [[NSWorkspace sharedWorkspace] frontmostApplication];
+
+//   // Check if Finder or our app is active - always play
+//   if ([activeApp.bundleIdentifier isEqualToString:@"com.apple.finder"] ||
+//       [activeApp.bundleIdentifier
+//           isEqualToString:@"com.biosthusvill.LiveWallpaper"]) {
+//     return YES;
+//   }
+
+//   // Check if the active app is hidden (Cmd+H)
+//   if (activeApp.isHidden) {
+//     return YES;
+//   }
+
+//   if (self.screen_locked) {
+//     return NO;
+//   }
+
+//   // Get all on-screen windows (this excludes minimized windows)
+//   CFArrayRef windowList = CGWindowListCopyWindowInfo(
+//       kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+//       kCGNullWindowID);
+//   BOOL hasVisibleAppWindow = NO;
+
+//   if (windowList) {
+//     NSArray *windows = (__bridge NSArray *)windowList;
+//     pid_t activePID = activeApp.processIdentifier;
+
+//     for (NSDictionary *window in windows) {
+//       NSNumber *ownerPID = window[(NSString *)kCGWindowOwnerPID];
+//       NSNumber *layer = window[(NSString *)kCGWindowLayer];
+
+//       // Check if this window belongs to the active app and is a normal
+//       window
+//       // (layer 0)
+//       if (ownerPID && [ownerPID intValue] == activePID && layer &&
+//           [layer intValue] == 0) {
+
+//         // Check if window has meaningful bounds
+//         NSDictionary *bounds = window[(NSString *)kCGWindowBounds];
+//         if (bounds) {
+//           CGRect rect;
+//           CGRectMakeWithDictionaryRepresentation(
+//               (__bridge CFDictionaryRef)bounds, &rect);
+
+//           // If window is reasonably sized, it's visible
+//           if (rect.size.width > 50 && rect.size.height > 50) {
+//             hasVisibleAppWindow = YES;
+//             break;
+//           }
+//         }
+//       }
+//     }
+//     CFRelease(windowList);
+//   }
+
+//   // Play if no visible windows from the active app
+//   return !hasVisibleAppWindow;
+// }
 
 - (void)checkAndUpdatePlaybackState {
   if (!self.autoPauseEnabled) {
+    [self resumeAllPlayers];
     return;
   }
 
-  BOOL shouldPlay = [self shouldPlayWallpaper];
-  BOOL isCurrentlyPlaying = (_players.firstObject.rate > 0);
-
-  if (shouldPlay && !isCurrentlyPlaying) {
-    NSLog(@"[Daemon] Timer: Starting playback - desktop is visible");
-    for (AVQueuePlayer *player in _players) {
-      [player play];
-    }
-  } else if (!shouldPlay && isCurrentlyPlaying) {
-    NSLog(@"[Daemon] Timer: Pausing playback - app window is visible");
-    for (AVQueuePlayer *player in _players) {
-      [player pause];
-    }
+  if ([self isScreenLocked] || ![self isFrontmostAppAllowed]) {
+    [self pauseAllPlayers];
+  } else {
+    [self resumeAllPlayers];
   }
 }
+- (BOOL)isScreenLocked {
+  CFBooleanRef locked = (CFBooleanRef)CFPreferencesCopyAppValue(
+      CFSTR("ScreenLocked"), CFSTR("com.apple.loginwindow"));
 
-- (BOOL)shouldPlayWallpaper {
-  // If auto-pause is disabled, always play
+  BOOL isLocked = NO;
 
-  NSRunningApplication *activeApp =
+  if (locked && CFGetTypeID(locked) == CFBooleanGetTypeID()) {
+    isLocked = (locked == kCFBooleanTrue);
+  }
+
+  if (locked)
+    CFRelease(locked);
+
+  return isLocked;
+}
+
+- (BOOL)isFrontmostAppAllowed {
+  NSRunningApplication *front =
       [[NSWorkspace sharedWorkspace] frontmostApplication];
 
-  // Check if Finder or our app is active - always play
-  if ([activeApp.bundleIdentifier isEqualToString:@"com.apple.finder"] ||
-      [activeApp.bundleIdentifier
-          isEqualToString:@"com.biosthusvill.LiveWallpaper"]) {
+  if (!front)
     return YES;
-  }
 
-  // Check if the active app is hidden (Cmd+H)
-  if (activeApp.isHidden) {
+  // Don’t pause when user is interacting with your preferences window
+  if ([front.bundleIdentifier isEqualToString:@"your.app.bundle.id"])
     return YES;
-  }
 
-  if (self.screen_locked) {
-    return NO;
-  }
-
-  // Get all on-screen windows (this excludes minimized windows)
-  CFArrayRef windowList = CGWindowListCopyWindowInfo(
-      kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
-      kCGNullWindowID);
-  BOOL hasVisibleAppWindow = NO;
-
-  if (windowList) {
-    NSArray *windows = (__bridge NSArray *)windowList;
-    pid_t activePID = activeApp.processIdentifier;
-
-    for (NSDictionary *window in windows) {
-      NSNumber *ownerPID = window[(NSString *)kCGWindowOwnerPID];
-      NSNumber *layer = window[(NSString *)kCGWindowLayer];
-
-      // Check if this window belongs to the active app and is a normal window
-      // (layer 0)
-      if (ownerPID && [ownerPID intValue] == activePID && layer &&
-          [layer intValue] == 0) {
-
-        // Check if window has meaningful bounds
-        NSDictionary *bounds = window[(NSString *)kCGWindowBounds];
-        if (bounds) {
-          CGRect rect;
-          CGRectMakeWithDictionaryRepresentation(
-              (__bridge CFDictionaryRef)bounds, &rect);
-
-          // If window is reasonably sized, it's visible
-          if (rect.size.width > 50 && rect.size.height > 50) {
-            hasVisibleAppWindow = YES;
-            break;
-          }
-        }
-      }
-    }
-    CFRelease(windowList);
-  }
-
-  // Play if no visible windows from the active app
-  return !hasVisibleAppWindow;
+  return NO;
 }
 
 - (void)activeApplicationChanged:(NSNotification *)notification {
+  if (!self.autoPauseEnabled)
+    return;
 
   if (self.screen_locked)
-    for (AVQueuePlayer *player in _players) {
+    return;
+
+  NSRunningApplication *activeApp =
+      notification.userInfo[NSWorkspaceApplicationKey];
+
+  if (!activeApp)
+    return;
+
+  NSString *bundleID = activeApp.bundleIdentifier;
+
+  BOOL allowedApp =
+      [bundleID isEqualToString:@"com.apple.finder"] ||
+      [bundleID isEqualToString:@"com.biosthusvill.LiveWallpaper"];
+
+  if (allowedApp) {
+    [self resumeAllPlayers];
+    NSLog(@"[AutoPause] App %@ allowed → resume", bundleID);
+  } else {
+    [self pauseAllPlayers];
+    NSLog(@"[AutoPause] App %@ not allowed → pause", bundleID);
+  }
+}
+
+- (void)resumeAllPlayers {
+  BOOL isPlaying = (_players.firstObject.rate > 0);
+  if (!isPlaying) {
+    for (AVQueuePlayer *player in _players)
+      [player play];
+    NSLog(@"[Daemon] Resumed playback");
+  }
+}
+
+- (void)pauseAllPlayers {
+  BOOL isPlaying = (_players.firstObject.rate > 0);
+  if (isPlaying) {
+    for (AVQueuePlayer *player in _players)
       [player pause];
-    }
-  return;
-  //[self checkAndUpdatePlaybackState];
-
-  dispatch_after(
-      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
-      dispatch_get_main_queue(), ^{
-        if (self.screen_locked) {
-          for (AVQueuePlayer *player in _players) {
-            [player pause];
-          }
-
-          return;
-        }
-
-        [self checkAndUpdatePlaybackState];
-      });
+    NSLog(@"[Daemon] Paused playback");
+  }
 }
 
 - (void)setAutoPauseEnabled:(BOOL)enabled {
@@ -458,11 +479,11 @@
 
   NSLog(@"[Daemon] Auto-pause %@", enabled ? @"enabled" : @"disabled");
 
-  // If disabled, ensure playback resumes
-  if (enabled) {
-    // If enabled, immediately check current state
-    [self checkAndUpdatePlaybackState];
-  }
+  // // If disabled, ensure playback resumes
+  // if (enabled) {
+  //   // If enabled, immediately check current state
+  //   [self checkAndUpdatePlaybackState];
+  // }
 }
 
 - (void)setVolume:(float)volume {
@@ -620,5 +641,6 @@ int main(int argc, const char *argv[]) {
 
     [[NSRunLoop mainRunLoop] run];
   }
+
   return 0;
 }

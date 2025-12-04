@@ -13,10 +13,16 @@ set(app_icon_macos "${CMAKE_SOURCE_DIR}/asset/livewall.icns")
 set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
 
-add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h DisplayManager.h)
 
 
 
+add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h DisplayManager.h SaveSystem.h SaveSystem.mm)
+
+
+
+add_subdirectory(vendor/yaml-cpp)
+
+target_link_libraries(LiveWallpaper yaml-cpp)
 
 set_source_files_properties(LiveWallpaper.mm PROPERTIES
     COMPILE_FLAGS "-std=c++17"
@@ -39,6 +45,7 @@ target_link_libraries(LiveWallpaper
     "-framework AVKit"
     "-framework ApplicationServices"
     "-framework ServiceManagement"
+    "-framework IOKit"
 )
 
 add_subdirectory(Daemon)
