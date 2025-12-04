@@ -26,7 +26,9 @@
 #import <ServiceManagement/SMAppService.h>
 #import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <unistd.h>
 
+#import "DisplayManager.h"
 #import "LineModule.h"
 
 #include <array>
@@ -90,54 +92,11 @@ std::string run_command(const std::string &cmd) {
 //   return std::system(cmd.c_str()) == 0;
 // }
 
-bool set_wallpaper_all_spaces(const std::string &imagePath) {
-  @autoreleasepool {
-    if (imagePath.empty()) {
-      NSLog(@"ERROR: Empty image path");
-      return false;
-    }
-
-    NSString *nsPath = [NSString stringWithUTF8String:imagePath.c_str()];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:nsPath]) {
-      NSLog(@"ERROR: Image not found: %@", nsPath);
-      return false;
-    }
-
-    // Load user preference for scale mode
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSInteger scaleMode =
-        [defaults integerForKey:@"scale_mode"]; // default 0 if not set
-    // Map your integer values to NSImageScaling enum if needed
-    NSNumber *scalingValue = @(scaleMode);
-
-    NSDictionary *options = @{NSWorkspaceDesktopImageScalingKey : scalingValue};
-
-    NSURL *imageURL = [NSURL fileURLWithPath:nsPath];
-    NSArray<NSScreen *> *screens = [NSScreen screens];
-
-    for (NSScreen *screen in screens) {
-      NSError *error = nil;
-      BOOL success = [[NSWorkspace sharedWorkspace] setDesktopImageURL:imageURL
-                                                             forScreen:screen
-                                                               options:options
-                                                                 error:&error];
-      if (!success) {
-        NSLog(@"Failed screen %@: %@", screen, error.localizedDescription);
-        return false;
-      }
-    }
-
-    NSLog(@"✅ Set wallpaper on %lu screens (all spaces) with scale mode %ld",
-          (unsigned long)screens.count, (long)scaleMode);
-    return true;
-  }
-}
 void handleSpaceChange(NSNotification *note) {
-  if (!set_wallpaper_all_spaces(frame)) {
-    std::cerr << "Failed to set wallpaper on all Spaces.\n";
-  } else {
-    NSLog(@"🌀 macOS Space (workspace) wallpaper reapplied!");
-  }
+
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.spaceChanged"), NULL, NULL, true);
 }
 
 NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
@@ -172,6 +131,11 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @property(strong) NSPopoverTouchBarItem *volumePopoverItem;
 
 @property(strong) NSString *videoPath;
+
+@property(strong) NSStackView *dockStack;
+@property(strong) NSArray<NSLayoutConstraint *> *dockWidthConstraints;
+
+@property(nonatomic, assign) std::list<CGDirectDisplayID> selectedDisplays;
 
 @end
 
@@ -210,8 +174,14 @@ NSString *getFolderPath(void) {
   return path;
 }
 - (void)screensDidChange:(NSNotification *)note {
-  [self startWallpaperWithPath:[NSString
-                                   stringWithUTF8String:g_videoPath.c_str()]];
+  // [self startWallpaperWithPath:[NSString
+  //                                  stringWithUTF8String:g_videoPath.c_str()]];
+  ScanDisplays();
+  usleep(1);
+  dispatch_async(dispatch_get_main_queue(), ^{
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    [appDelegate reloadDock];
+  });
 }
 
 - (BOOL)enableAppAsLoginItem {
@@ -1238,7 +1208,7 @@ NSTextField *CreateLabel(NSString *string) {
               // Remove original
               if ([fm fileExistsAtPath:fileURL.path]) {
                 if (![fm removeItemAtURL:fileURL error:&replaceError]) {
-                  NSLog(@"❌ Remove failed: %@",
+                  NSLog(@"Remove failed: %@",
                         replaceError.localizedDescription);
                 }
               }
@@ -1246,23 +1216,21 @@ NSTextField *CreateLabel(NSString *string) {
               if (![fm moveItemAtURL:tempURL
                                toURL:fileURL
                                error:&replaceError]) {
-                NSLog(@"❌ Replace failed: %@",
-                      replaceError.localizedDescription);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                  [self appendLogMessage:
-                            [NSString
-                                stringWithFormat:@"❌ Replace failed: %@ (%@)",
-                                                 file,
-                                                 replaceError
-                                                     .localizedDescription]];
-                });
-              } else {
-                NSLog(@"✅ Converted: %@", file);
+                NSLog(@"Replace failed: %@", replaceError.localizedDescription);
                 dispatch_async(dispatch_get_main_queue(), ^{
                   [self
-                      appendLogMessage:[NSString
-                                           stringWithFormat:@"✅ Converted: %@",
-                                                            file]];
+                      appendLogMessage:
+                          [NSString
+                              stringWithFormat:@"Replace failed: %@ (%@)", file,
+                                               replaceError
+                                                   .localizedDescription]];
+                });
+              } else {
+                NSLog(@"Converted: %@", file);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                  [self appendLogMessage:[NSString
+                                             stringWithFormat:@"Converted: %@",
+                                                              file]];
                 });
               }
               dispatch_async(dispatch_get_main_queue(), ^{
@@ -1272,16 +1240,15 @@ NSTextField *CreateLabel(NSString *string) {
                 [self.progressBar setDoubleValue:currentIndex];
               });
             } else {
-              NSLog(@"❌ Export failed for %@ (%@)", file,
+              NSLog(@"Export failed for %@ (%@)", file,
                     exportSession.error.localizedDescription);
               [fm removeItemAtURL:tempURL error:nil];
               dispatch_async(dispatch_get_main_queue(), ^{
-                [self
-                    appendLogMessage:
-                        [NSString stringWithFormat:@"❌ Export failed: %@ (%@)",
-                                                   file,
-                                                   exportSession.error
-                                                       .localizedDescription]];
+                [self appendLogMessage:
+                          [NSString
+                              stringWithFormat:@"Export failed: %@ (%@)", file,
+                                               exportSession.error
+                                                   .localizedDescription]];
                 [self.progressLabel
                     setStringValue:[NSString
                                        stringWithFormat:@"Failed: %@", file]];
@@ -1471,8 +1438,8 @@ NSTextField *CreateLabel(NSString *string) {
       }
       completionHandler:nil];
 
-    NSSize maxSize = NSMakeSize(CGFLOAT_MAX, MAX_HEIGHT);
-    [self.blurWindow setMaxSize:maxSize];
+  NSSize maxSize = NSMakeSize(CGFLOAT_MAX, MAX_HEIGHT);
+  [self.blurWindow setMaxSize:maxSize];
 }
 
 void killAllDaemons() {
@@ -1509,6 +1476,7 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
                         [imagePath UTF8String],
                         [volumeStr UTF8String],
                         [scaleMode UTF8String],
+
                         NULL};
 
   pid_t pid;
@@ -1519,15 +1487,55 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   }
 }
 
+void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
+                          CGDirectDisplayID displayID) {
+  NSString *daemonRelativePath = @"Contents/MacOS/wallpaperdaemon";
+  NSString *appPath = [[NSBundle mainBundle] bundlePath];
+  NSString *daemonPath =
+      [appPath stringByAppendingPathComponent:daemonRelativePath];
+
+  float volume =
+      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+  NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
+  NSString *scaleMode =
+      [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
+  NSLog(@"Scaling mode: %@", scaleMode);
+  if (!displayID) {
+    NSLog(@"Display ID not valid %u", displayID);
+    displayID = [[[NSScreen mainScreen] deviceDescription][@"NSScreenNumber"]
+        unsignedIntValue];
+    NSLog(@"Display ID changed to %u", displayID);
+  }
+
+  NSString *display = [NSString stringWithFormat:@"%u", displayID];
+
+  const char *daemonPathC = [daemonPath UTF8String];
+  const char *args[] = {daemonPathC,
+                        [videoPath UTF8String],
+                        [imagePath UTF8String],
+                        [volumeStr UTF8String],
+                        [scaleMode UTF8String],
+                        displayID ? [display UTF8String] : "",
+                        NULL};
+
+  pid_t pid;
+  int status =
+      posix_spawn(&pid, daemonPathC, NULL, NULL, (char *const *)args, environ);
+  if (status != 0) {
+    NSLog(@"Failed to launch daemon: %d", status);
+  }
+  SetWallpaperDisplay(pid, displayID, std::string([videoPath UTF8String]),
+                      std::string([imagePath UTF8String]));
+}
+
 - (void)startWallpaperWithPath:(NSString *)videoPath {
   LogMemoryUsage();
-
   for (id observer in self.notificationObservers) {
     [[NSNotificationCenter defaultCenter] removeObserver:observer];
   }
   [self.notificationObservers removeAllObjects];
-  killAllDaemons();
-  usleep(300000);
+  // killAllDaemons();
+  // usleep(300000);
 
   if (!videoPath || videoPath.length == 0) {
     NSLog(@"ERROR: Invalid videoPath");
@@ -1568,14 +1576,21 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
 
   NSLog(@"videoPath = %@", videoPath);
 
-  launchDaemon(videoPath, imagePath);
+  // launchDaemon(videoPath, imagePath);
+
+  for (CGDirectDisplayID dID : _selectedDisplays) {
+    launchDaemonOnScreen(videoPath, imagePath, dID);
+  }
+
+  PrintDisplays(displays);
+
   LogMemoryUsage();
 
-  dispatch_after(
-      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
-      dispatch_get_main_queue(), ^{
-        set_wallpaper_all_spaces(frame);
-      });
+  // dispatch_after(
+  //     dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
+  //     dispatch_get_main_queue(), ^{
+  //       set_wallpaper_all_spaces(frame);
+  //     });
 }
 
 - (void)handleButtonClick:(NSButton *)sender {
@@ -1789,8 +1804,9 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
       addObserverForName:NSWorkspaceScreensDidWakeNotification
                   object:nil
                    queue:[NSOperationQueue mainQueue]
-              usingBlock:^(NSNotification *_Nonnull note) {
-                [self handleScreenUnlock:note];
+              usingBlock:^(NSNotification *_Nonnull note){
+                  //[self handleScreenUnlock:note];
+                  // TODO: Add handler on screen lock
               }];
 
   NSRect frame = NSMakeRect(0, 0, 800, 600);
@@ -1969,6 +1985,14 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
     [self reloadGrid:nil];
   });
 
+  [self setupFloatingDock];
+  ScanDisplays();
+  usleep(1);
+  dispatch_async(dispatch_get_main_queue(), ^{
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    [appDelegate reloadDock];
+  });
+
   self.statusItem = [[NSStatusBar systemStatusBar]
       statusItemWithLength:NSSquareStatusItemLength];
   if (@available(macOS 11.0, *)) {
@@ -2007,14 +2031,163 @@ void launchDaemon(NSString *videoPath, NSString *imagePath) {
   }
 }
 
-- (void)handleScreenUnlock:(NSNotification *)notification {
-  NSLog(@"🔓 Screen unlocked");
-  if (buttons.count > 0 &&
-      [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"]) {
-    NSLog(@"Loading Random Wallpaper...");
-    NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
-    NSButton *randomButton = buttons[randomIndex];
-    [randomButton performClick:nil];
+- (void)setupFloatingDock {
+  NSView *content = self.blurWindow.contentView;
+
+  // Create dock container
+  NSView *dockView = [[NSView alloc] init];
+  dockView.wantsLayer = YES;
+  dockView.layer.cornerRadius = 12;
+  dockView.layer.masksToBounds = YES;
+  dockView.translatesAutoresizingMaskIntoConstraints = NO;
+  [content addSubview:dockView];
+
+  CGFloat dockHeight = 60;   // dock height
+  CGFloat bottomOffset = 20; // distance from bottom
+
+  // Floating dock constraints
+  [NSLayoutConstraint activateConstraints:@[
+    [dockView.centerXAnchor
+        constraintEqualToAnchor:content.centerXAnchor], // center horizontally
+    [dockView.bottomAnchor constraintEqualToAnchor:content.bottomAnchor
+                                          constant:-bottomOffset],
+    [dockView.heightAnchor constraintEqualToConstant:dockHeight]
+  ]];
+
+  // Background blur / liquid glass
+  NSView *effectView;
+  if (@available(macOS 26.0, *)) {
+    NSGlassEffectView *blurView =
+        [[NSGlassEffectView alloc] initWithFrame:NSZeroRect];
+    blurView.translatesAutoresizingMaskIntoConstraints = NO;
+    effectView = blurView;
+  } else {
+    NSVisualEffectView *blurView =
+        [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
+    blurView.material = NSVisualEffectMaterialHUDWindow;
+    blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    blurView.state = NSVisualEffectStateActive;
+    blurView.translatesAutoresizingMaskIntoConstraints = NO;
+    effectView = blurView;
+  }
+  [dockView addSubview:effectView positioned:NSWindowBelow relativeTo:nil];
+  [NSLayoutConstraint activateConstraints:@[
+    [effectView.topAnchor constraintEqualToAnchor:dockView.topAnchor],
+    [effectView.bottomAnchor constraintEqualToAnchor:dockView.bottomAnchor],
+    [effectView.leadingAnchor constraintEqualToAnchor:dockView.leadingAnchor],
+    [effectView.trailingAnchor constraintEqualToAnchor:dockView.trailingAnchor]
+  ]];
+
+  // Horizontal stack view for buttons
+  self.dockStack = [[NSStackView alloc] init];
+  self.dockStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+  self.dockStack.alignment = NSLayoutAttributeCenterY;
+  self.dockStack.distribution = NSStackViewDistributionFill;
+  self.dockStack.spacing = 8;
+  self.dockStack.translatesAutoresizingMaskIntoConstraints = NO;
+  [dockView addSubview:self.dockStack];
+
+  [NSLayoutConstraint activateConstraints:@[
+    [self.dockStack.topAnchor constraintEqualToAnchor:dockView.topAnchor
+                                             constant:5],
+    [self.dockStack.bottomAnchor constraintEqualToAnchor:dockView.bottomAnchor
+                                                constant:-5],
+    [self.dockStack.leadingAnchor constraintEqualToAnchor:dockView.leadingAnchor
+                                                 constant:8],
+    [self.dockStack.trailingAnchor
+        constraintEqualToAnchor:dockView.trailingAnchor
+                       constant:-8]
+  ]];
+
+  // Rebuild buttons and adjust dock width dynamically
+  [self reloadDock];
+}
+- (void)reloadDock {
+  if (!self.dockStack)
+    return; // safety check
+
+  // Remove all old buttons
+  for (NSView *v in self.dockStack.arrangedSubviews) {
+    [self.dockStack removeArrangedSubview:v];
+    [v removeFromSuperview];
+  }
+
+  // Get dock height
+  CGFloat dockHeight = self.dockStack.frame.size.height;
+  CGFloat buttonSpacing = self.dockStack.spacing;
+  CGFloat totalWidth = 16; // padding 8+8
+
+  // Rebuild buttons from displays list
+
+  for (const Display &disp : displays) {
+    NSLog(@"Button creating for : %@", displayNameForDisplayID(disp.screen));
+    NSButton *btn =
+        [NSButton buttonWithTitle:displayNameForDisplayID(disp.screen)
+                           target:self
+                           action:@selector(dockButtonToggled:)];
+    btn.tag = disp.screen;
+    btn.bezelStyle = NSBezelStyleRounded;
+    [btn setButtonType:NSButtonTypeToggle];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.wantsLayer = YES;
+
+    // Button height matches dock height
+    [NSLayoutConstraint
+        activateConstraints:@[ [btn.heightAnchor
+                                constraintEqualToConstant:dockHeight - 10] ]];
+
+    // Glow styling
+    btn.layer.cornerRadius = 6;
+    btn.layer.backgroundColor = [NSColor clearColor].CGColor;
+    btn.layer.shadowOpacity = 0;
+    btn.layer.shadowRadius = 10;
+    btn.layer.shadowColor = [NSColor yellowColor].CGColor;
+    btn.layer.shadowOffset = CGSizeZero;
+
+    [self.dockStack addArrangedSubview:btn];
+
+    // Estimate button width for dock resizing
+    [btn sizeToFit];
+    totalWidth += btn.frame.size.width + buttonSpacing;
+  }
+
+  // Update dock container width dynamically
+  [NSLayoutConstraint deactivateConstraints:self.dockWidthConstraints];
+  self.dockWidthConstraints = @[ [self.dockStack.superview.widthAnchor
+      constraintEqualToConstant:totalWidth] ];
+  for (NSLayoutConstraint *c in self.dockWidthConstraints) {
+    c.active = YES;
+  }
+}
+
+// Toggle button with multi-selection & yellow glow
+- (void)dockButtonToggled:(NSButton *)sender {
+  if ([sender state] == NSControlStateValueOn) {
+    sender.layer.backgroundColor =
+        [NSColor colorWithCalibratedRed:1 green:1 blue:0 alpha:0.2].CGColor;
+    sender.layer.shadowOpacity = 1.0;
+  } else {
+    sender.layer.backgroundColor = [NSColor clearColor].CGColor;
+    sender.layer.shadowOpacity = 0;
+  }
+
+  _selectedDisplays = {};
+  for (NSButton *btn in self.dockStack.arrangedSubviews) {
+    if ([btn state] == NSControlStateValueOn) {
+      _selectedDisplays.push_back(btn.tag);
+    }
+  }
+
+  {
+    NSMutableString *logString =
+        [NSMutableString stringWithString:@"Selected displays: ["];
+
+    for (CGDirectDisplayID displayID : _selectedDisplays) {
+      [logString appendFormat:@"%u, ", displayID];
+    }
+
+    [logString appendString:@"]"];
+    NSLog(@"%@", logString);
   }
 }
 

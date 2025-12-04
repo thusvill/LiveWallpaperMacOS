@@ -13,7 +13,7 @@ set(app_icon_macos "${CMAKE_SOURCE_DIR}/asset/livewall.icns")
 set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
 
-add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h)
+add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h DisplayManager.h)
 
 
 

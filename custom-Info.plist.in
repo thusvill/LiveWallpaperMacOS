@@ -30,6 +30,9 @@
 
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+  <!-- For daemon
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string> -->
 
   <key>NSRequiresAquaSystemAppearance</key>
   <false/>
