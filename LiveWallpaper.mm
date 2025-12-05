@@ -180,32 +180,49 @@ NSString *getFolderPath(void) {
   return path;
 }
 - (void)UnlockHandle:(NSNotification *)note {
-  NSLog(@"Appling random wallpaper on Screenunlock...");
-  if (buttons.count == 0)
-    return;
+    NSLog(@"Unlock detected — waiting for displays to stabilize...");
+    if (buttons.count == 0)
+            return;
 
-  BOOL randomUnlock =
-      [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"];
-  if (!randomUnlock)
-    return;
-  
-  ScanDisplays();
-  PrintDisplays(displays);
-  
+        BOOL randomUnlock =
+            [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"];
+        if (!randomUnlock)
+            return;
 
-  _selectedDisplays.clear();
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC),
+                   dispatch_get_main_queue(), ^{
+                       
+        NSLog(@"Applying random wallpaper on screen unlock...");
 
-  for (Display display : displays) {
-    _selectedDisplays.push_back(display.screen);
-    NSLog(@"Loading Random Wallpaper...");
-    NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
-    NSButton *randomButton = buttons[randomIndex];
-    [randomButton performClick:nil];
-    NSLog(@"Random wallpaper on %u, %@", display.screen, randomButton.toolTip);
-    _selectedDisplays.clear();
-  }
+        
 
-  _selectedDisplays.clear();
+        // Re-scan *after* displays are actually available
+        ScanDisplays();
+        PrintDisplays(displays);
+
+        for (Display display : displays) {
+            _selectedDisplays.clear();
+            _selectedDisplays.push_back(display.screen);
+
+            if ([[NSUserDefaults standardUserDefaults] boolForKey:@"random"] &&
+                buttons.count > 0) {
+
+                NSLog(@"Loading Random Wallpaper...");
+                NSUInteger randomIndex =
+                    arc4random_uniform((u_int32_t)buttons.count);
+                NSButton *randomButton = buttons[randomIndex];
+                [randomButton performClick:nil];
+
+            } else {
+                [self startWallpaperWithPath:
+                    [NSString stringWithUTF8String:display.videoPath.c_str()]];
+            }
+
+            _selectedDisplays.clear();
+        }
+
+        _selectedDisplays.clear();
+    });
 }
 
 - (void)screensDidChange:(NSNotification *)note {
@@ -1859,7 +1876,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   [[[NSWorkspace sharedWorkspace] notificationCenter]
       addObserver:self
          selector:@selector(UnlockHandle:)
-             name:NSWorkspaceScreensDidWakeNotification
+             name:NSWorkspaceSessionDidBecomeActiveNotification
            object:nil];
 
   NSRect frame = NSMakeRect(0, 0, 800, 600);
@@ -2114,6 +2131,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
     NSGlassEffectView *blurView =
         [[NSGlassEffectView alloc] initWithFrame:NSZeroRect];
     blurView.translatesAutoresizingMaskIntoConstraints = NO;
+    blurView.style = NSGlassEffectViewStyleClear;
     effectView = blurView;
   } else {
     NSVisualEffectView *blurView =

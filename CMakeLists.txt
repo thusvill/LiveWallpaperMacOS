@@ -12,7 +12,7 @@ set(MACOSX_BUNDLE_ICON_FILE livewall.icns)
 set(app_icon_macos "${CMAKE_SOURCE_DIR}/asset/livewall.icns")
 set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
 
-
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 
