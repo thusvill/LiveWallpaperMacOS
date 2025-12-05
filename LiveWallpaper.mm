@@ -2088,8 +2088,8 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   // Add observer to Darwin notification center
   CFNotificationCenterAddObserver(
       CFNotificationCenterGetDarwinNotifyCenter(),
-      (__bridge const void *)(self), // use self (AppDelegate) or a valid object
-      generateStaticWallpapersForFolderCallback, // a C function callback
+      (__bridge const void *)(self), 
+      generateStaticWallpapersForFolderCallback, 
       CFSTR("com.live.wallpaper.generateCache"), NULL,
       CFNotificationSuspensionBehaviorDeliverImmediately);
 
@@ -2365,8 +2365,8 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   dockView.translatesAutoresizingMaskIntoConstraints = NO;
   [content addSubview:dockView];
 
-  CGFloat dockHeight = 80;   // dock height
-  CGFloat bottomOffset = 20; // distance from bottom
+  CGFloat dockHeight = 80;   
+  CGFloat bottomOffset = 20; 
 
   // Floating dock constraints
   [NSLayoutConstraint activateConstraints:@[

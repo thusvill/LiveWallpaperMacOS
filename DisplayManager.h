@@ -1,3 +1,21 @@
+/*
+ * This file is part of LiveWallpaper – LiveWallpaper App for macOS.
+ * Copyright (C) 2025 Bios thusvill
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #pragma once
 
 #include <AppKit/AppKit.h>
@@ -42,38 +60,34 @@ static inline NSString *displayNameForDisplayID(CGDirectDisplayID did) {
   if (did == kCGNullDirectDisplay)
     return @"Display (unknown)";
 
-  // 1) Try CoreDisplay (private) via dlsym
   CoreDisplayInfoFnType infoFn = GetCoreDisplayInfoFn();
   if (infoFn) {
-    CFDictionaryRef info = infoFn(did); // Create rule: we own this CF object
+    CFDictionaryRef info = infoFn(did); 
     if (info) {
-      // Transfer ownership to ARC-managed NSDictionary so ARC releases it
-      // safely.
+      
       NSDictionary *dict = (__bridge_transfer NSDictionary *)info;
-      // The dictionary often contains a sub-dictionary 'DisplayProductName'
-      // which itself may be a dictionary of localized names; handle both
-      // CFString and NSDictionary cases.
+      
       id nameVal = dict[@"DisplayProductName"];
       if ([nameVal isKindOfClass:[NSString class]] &&
           ((NSString *)nameVal).length > 0)
         return (NSString *)nameVal;
       if ([nameVal isKindOfClass:[NSDictionary class]]) {
-        // localized dictionary: pick en or first value
+      
         NSDictionary *localNames = (NSDictionary *)nameVal;
         NSString *en = localNames[@"en_US"] ?: localNames[@"en"] ?: nil;
         if (en.length > 0)
           return en;
-        // else pick any value
+      
         for (id v in localNames.allValues) {
           if ([v isKindOfClass:[NSString class]] && ((NSString *)v).length > 0)
             return (NSString *)v;
         }
       }
-      // if no name, let it fall through to NSScreen fallback
+      
     }
   }
 
-  // 2) Fallback: loop NSScreen deviceDescription (safe, returns generic name)
+  
   for (NSScreen *screen in NSScreen.screens) {
     NSDictionary *desc = screen.deviceDescription;
     NSNumber *num = desc[@"NSScreenNumber"];
@@ -87,7 +101,7 @@ static inline NSString *displayNameForDisplayID(CGDirectDisplayID did) {
     }
   }
 
-  // 3) Last resort: printable fallback
+  
   return [NSString stringWithFormat:@"Display %u", did];
 }
 
@@ -135,10 +149,10 @@ inline bool KillProcessByPID(pid_t pid) {
     return false;
   }
 
-  // Try SIGTERM first
+  
   kill(pid, SIGTERM);
 
-  // Wait up to 1.5 seconds
+  
   for (int i = 0; i < 15; i++) {
     if (kill(pid, 0) != 0 && errno == ESRCH) {
 
@@ -147,7 +161,7 @@ inline bool KillProcessByPID(pid_t pid) {
     usleep(100000); // 0.1s
   }
 
-  // Force kill
+  
   kill(pid, SIGKILL);
 
   for (int i = 0; i < 10; i++) {
