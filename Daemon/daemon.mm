@@ -393,49 +393,60 @@
   [[NSUserDefaults standardUserDefaults] setFloat:volume
                                            forKey:@"wallpapervolume"];
 }
-
 - (bool)setStaticWallpaper {
   @autoreleasepool {
-    if (!_framePath) {
-      NSLog(@"ERROR: Empty image path");
+    if (!_framePath)
       return false;
-    }
-
-    if (![[NSFileManager defaultManager] fileExistsAtPath:_framePath]) {
-      NSLog(@"ERROR: Image not found: %@", _framePath);
+    if (![[NSFileManager defaultManager] fileExistsAtPath:_framePath])
       return false;
-    }
-
-    if (!_targetScreen) {
+    if (!_targetScreen)
       return false;
-    }
 
-    // Load user preference for scale mode
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSInteger scaleMode =
-        [defaults integerForKey:@"scale_mode"]; // default 0 if not set
-    // Map your integer values to NSImageScaling enum if needed
-    NSNumber *scalingValue = @(scaleMode);
+    NSInteger scaleMode = [defaults integerForKey:@"scale_mode"];
 
-    NSDictionary *options = @{NSWorkspaceDesktopImageScalingKey : scalingValue};
+    NSImageScaling scaling = NSImageScaleProportionallyUpOrDown;
+    BOOL allowClipping = NO;
+
+    switch (scaleMode) {
+    case 0:
+      scaling = NSImageScaleProportionallyUpOrDown;
+      allowClipping = YES;
+      break;
+    case 1:
+      scaling = NSImageScaleProportionallyUpOrDown;
+      allowClipping = NO;
+      break;
+    case 2:
+      scaling = NSImageScaleAxesIndependently;
+      allowClipping = NO;
+      break;
+    case 3:
+      scaling = NSImageScaleNone;
+      allowClipping = NO;
+      break;
+    case 4:
+      scaling = NSImageScaleProportionallyUpOrDown;
+      allowClipping = YES;
+      break;
+    default:
+      break;
+    }
+
+    NSDictionary *options = @{
+      NSWorkspaceDesktopImageScalingKey : @(scaling),
+      NSWorkspaceDesktopImageAllowClippingKey : @(allowClipping)
+    };
 
     NSURL *imageURL = [NSURL fileURLWithPath:_framePath];
-    NSArray<NSScreen *> *screens = [NSScreen screens];
-
     NSError *error = nil;
+
     BOOL success =
         [[NSWorkspace sharedWorkspace] setDesktopImageURL:imageURL
                                                 forScreen:_targetScreen
                                                   options:options
                                                     error:&error];
-    if (!success) {
-      NSLog(@"Failed screen %@: %@", _targetScreen, error.localizedDescription);
-      return false;
-    }
-
-    NSLog(@"Set wallpaper %@ on %lu screens (all spaces) with scale mode %ld",
-          imageURL, (unsigned long)screens.count, (long)scaleMode);
-    return true;
+    return success;
   }
 }
 

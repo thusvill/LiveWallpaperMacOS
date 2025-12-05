@@ -15,8 +15,8 @@ namespace YAML {
 template <> struct convert<Display> {
   static Node encode(const Display &d) {
     Node node;
-    node["uuid"] = d.uuid; 
-    
+    node["uuid"] = d.uuid;
+    node["screen"] = d.screen;
     node["video"] = d.videoPath;
     node["frame"] = d.framePath;
     node["daemon"] = (int)d.daemon;
@@ -25,16 +25,13 @@ template <> struct convert<Display> {
 
   static bool decode(const Node &node, Display &d) {
 
-    
     if (node["uuid"])
       d.uuid = node["uuid"].as<std::string>();
     else
       d.uuid = "";
 
-    
-    
+    d.screen = node["screen"].as<CGDirectDisplayID>();
 
-    
     d.videoPath = node["video"] ? node["video"].as<std::string>() : "";
     d.framePath = node["frame"] ? node["frame"].as<std::string>() : "";
     d.daemon = node["daemon"] ? (pid_t)node["daemon"].as<int>() : 0;

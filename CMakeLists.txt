@@ -16,7 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 
-add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h DisplayManager.h SaveSystem.h SaveSystem.mm)
+add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h DisplayManager.h SaveSystem.h SaveSystem.mm LoadingOverlay.h LoadingOverlay.mm)
 
 
 

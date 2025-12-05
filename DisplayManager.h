@@ -199,6 +199,7 @@ static void ScanDisplays() {
   for (auto it = displays.begin(); it != displays.end();) {
     if (runtime.find(it->uuid) == runtime.end()) {
       KillProcessByPID(it->daemon);
+
       it = displays.erase(it);
     } else {
       ++it;

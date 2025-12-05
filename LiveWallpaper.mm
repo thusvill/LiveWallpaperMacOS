@@ -35,6 +35,7 @@
 
 #import "DisplayManager.h"
 #import "LineModule.h"
+#import "LoadingOverlay.h"
 #import "SaveSystem.h"
 
 #include <array>
@@ -65,8 +66,6 @@ void LogMemoryUsage(void) {
 
 namespace fs = std::filesystem;
 
-std::string g_videoPath;
-std::string frame = "";
 bool reload = true;
 
 std::string run_command(const std::string &cmd) {
@@ -152,7 +151,7 @@ NSScreen *mainScreen = NULL;
 NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
 NSView *content;
 NSString *folderPath;
-
+std::list<pid_t> all_deamon_created{};
 void checkFolderPath() {
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   if ([defaults objectForKey:@"WallpaperFolder"]) {
@@ -179,6 +178,7 @@ NSString *getFolderPath(void) {
 
   return path;
 }
+
 - (void)UnlockHandle:(NSNotification *)note {
   NSLog(@"Unlock detected — waiting for displays to stabilize...");
   if (buttons.count == 0)
@@ -189,55 +189,101 @@ NSString *getFolderPath(void) {
   if (!randomUnlock)
     return;
 
+  AppDelegate *weakSelf = self; // Manual weak ref
+
   dispatch_after(
-      dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC),
+      dispatch_time(DISPATCH_TIME_NOW, 1.5 * NSEC_PER_SEC),
       dispatch_get_main_queue(), ^{
+        AppDelegate *strongSelf = weakSelf;
+        if (!strongSelf)
+          return;
+
         NSLog(@"Applying random wallpaper on screen unlock...");
 
-        // Re-scan *after* displays are actually available
         ScanDisplays();
         PrintDisplays(displays);
 
+        NSString *folderPath = getFolderPath();
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSArray *allFiles = [fm contentsOfDirectoryAtPath:folderPath error:nil];
+        NSPredicate *videoPredicate = [NSPredicate
+            predicateWithFormat:@"pathExtension IN {'mp4', 'mov'}"];
+        NSArray *videoFiles =
+            [allFiles filteredArrayUsingPredicate:videoPredicate];
+
+        if (videoFiles.count == 0)
+          return;
+
+        // Fix: NSMutableArray instead of NSArray
+        NSMutableArray *displaysCopy =
+            [NSMutableArray arrayWithCapacity:displays.size()];
         for (Display display : displays) {
-          _selectedDisplays.clear();
-          _selectedDisplays.push_back(display.screen);
-
-          if ([[NSUserDefaults standardUserDefaults] boolForKey:@"random"] &&
-              buttons.count > 0) {
-
-            NSLog(@"Loading Random Wallpaper...");
-            NSUInteger randomIndex =
-                arc4random_uniform((u_int32_t)buttons.count);
-            NSButton *randomButton = buttons[randomIndex];
-            [randomButton performClick:nil];
-
-          } else {
-            [self
-                startWallpaperWithPath:[NSString
-                                           stringWithUTF8String:display
-                                                                    .videoPath
-                                                                    .c_str()]];
-          }
-
-          _selectedDisplays.clear();
+          [displaysCopy
+              addObject:[NSNumber numberWithUnsignedLong:display.screen]];
         }
 
-        _selectedDisplays.clear();
+        NSArray *videosCopy = [[NSArray alloc] initWithArray:videoFiles];
+        NSString *cacheDir = [strongSelf staticWallpaperChachePath];
+
+        __block NSUInteger index = 0;
+
+        void (^processNext)(void) = ^{
+          if (index >= [displaysCopy count]) {
+            NSLog(@"✅ All displays randomized");
+            [videosCopy release];
+            return;
+          }
+
+          NSNumber *screenID = [displaysCopy objectAtIndex:index];
+          NSUInteger randomIdx =
+              arc4random_uniform((u_int32_t)[videosCopy count]);
+          NSString *videoName = [videosCopy objectAtIndex:randomIdx];
+          NSString *videoPath =
+              [folderPath stringByAppendingPathComponent:videoName];
+
+          NSString *imageName = [videoName stringByDeletingPathExtension];
+          NSString *imagePath =
+              [cacheDir stringByAppendingPathComponent:imageName];
+          imagePath = [imagePath stringByAppendingPathExtension:@"png"];
+
+          if (![fm fileExistsAtPath:imagePath]) {
+            AsyncLoading(^{
+              [strongSelf generateStaticWallpapersForFolder:folderPath];
+            });
+          }
+
+          NSLog(@"🎲 Screen %lu: %@ → %@", [screenID unsignedLongValue],
+                videoName, imageName);
+
+          strongSelf->_selectedDisplays.clear();
+          strongSelf->_selectedDisplays.push_back([screenID unsignedLongValue]);
+
+          launchDaemonOnScreen(videoPath, imagePath,
+                               [screenID unsignedLongValue]);
+
+          index++;
+          dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1.5 * NSEC_PER_SEC),
+                         dispatch_get_main_queue(), processNext);
+        };
+
+        processNext();
       });
 }
 
 - (void)screensDidChange:(NSNotification *)note {
   // [self startWallpaperWithPath:[NSString
   //                                  stringWithUTF8String:g_videoPath.c_str()]];
-
-  ScanDisplays();
+  
+    ScanDisplays();
+  
 
   usleep(1);
+  startLoading(@"Applying wallpapers on new screens...");
   dispatch_async(dispatch_get_main_queue(), ^{
     AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
     [appDelegate reloadDock];
     if (!displays.empty()) {
-      for (Display display : displays) {
+      for (Display &display : displays) {
         _selectedDisplays.clear();
         _selectedDisplays.push_back(display.screen);
 
@@ -248,6 +294,12 @@ NSString *getFolderPath(void) {
         _selectedDisplays.clear();
       }
     }
+
+    dispatch_after(
+        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)),
+        dispatch_get_main_queue(), ^{
+          endLoading();
+        });
   });
 }
 
@@ -425,6 +477,10 @@ NSString *getFolderPath(void) {
   NSFileManager *fileManager = [NSFileManager defaultManager];
   NSString *wallpaperCachePath = [self staticWallpaperChachePath];
 
+  if (folderPath == nullptr) {
+    folderPath = getFolderPath();
+  }
+
   //[self clearCache];
   if (![fileManager fileExistsAtPath:wallpaperCachePath]) {
     [fileManager createDirectoryAtPath:wallpaperCachePath
@@ -522,6 +578,11 @@ NSString *getFolderPath(void) {
                               }
                               CGImageRelease(staticImageRef);
                               NSLog(@"Saved full-res PNG: %@", thumbName);
+                              NSString *msg =
+                                  [NSString stringWithFormat:
+                                                @"Generated StaticWallapper %@",
+                                                thumbName];
+                              loadingMessage(msg);
                             } else {
                               NSLog(@"Error generating image for %@: %@",
                                     filename, error.localizedDescription);
@@ -538,7 +599,7 @@ NSString *getFolderPath(void) {
   NSFileManager *fileManager = [NSFileManager defaultManager];
   NSString *thumbnailCachePath = [self thumbnailCachePath];
 
-  [self clearCache];
+  //[self clearCache];
   if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
     [fileManager createDirectoryAtPath:thumbnailCachePath
            withIntermediateDirectories:YES
@@ -607,6 +668,9 @@ NSString *getFolderPath(void) {
           NSString *thumbPath =
               [thumbnailCachePath stringByAppendingPathComponent:thumbName];
           [jpgData writeToFile:thumbPath atomically:YES];
+          NSString *msg = [NSString
+              stringWithFormat:@"Generated StaticWallapper %@", thumbName];
+          loadingMessage(msg);
         } else {
           NSLog(@"Error generating thumbnail for %@: %@", filename,
                 error.localizedDescription);
@@ -721,6 +785,7 @@ NSString *getFolderPath(void) {
         }
 
         // Native GCD - no C++ std::function issues
+        startLoading(@"Loading Folder data...");
         dispatch_queue_t bgQueue =
             dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
         dispatch_async(bgQueue, ^{
@@ -734,6 +799,7 @@ NSString *getFolderPath(void) {
             // Main thread: UI update only
             [self reloadGrid:nil];
             NSLog(@"UI refreshed: %@", path);
+            endLoading();
           });
         });
       }
@@ -1748,11 +1814,18 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   if (status != 0) {
     NSLog(@"Failed to launch daemon: %d", status);
   }
+  all_deamon_created.push_back(pid);
+
   SetWallpaperDisplay(pid, displayID, std::string([videoPath UTF8String]),
                       std::string([imagePath UTF8String]));
 }
 
 - (void)startWallpaperWithPath:(NSString *)videoPath {
+
+  if (!videoPath || videoPath.length == 0 || videoPath == nil) {
+    NSLog(@"ERROR: Invalid videoPath");
+    return;
+  }
 
   // If display selection empty -> select all displays
   if (_selectedDisplays.empty()) {
@@ -1768,12 +1841,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   // killAllDaemons();
   // usleep(300000);
 
-  if (!videoPath || videoPath.length == 0) {
-    NSLog(@"ERROR: Invalid videoPath");
-    return;
-  }
-
-  g_videoPath = std::string([videoPath UTF8String]);
+  std::string g_videoPath = std::string([videoPath UTF8String]);
 
   NSString *videoPathNSString =
       [NSString stringWithUTF8String:g_videoPath.c_str()];
@@ -1799,12 +1867,23 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   NSFileManager *fm = [NSFileManager defaultManager];
   if (![fm fileExistsAtPath:imagePath]) {
     [self generateStaticWallpapersForFolder:folderPath];
+
+    //[self startWallpaperWithPath:videoPath];
+    return;
   }
 
   NSLog(@"videoPath = %@", videoPath);
 
   for (CGDirectDisplayID dID : _selectedDisplays) {
-    launchDaemonOnScreen(videoPath, imagePath, dID);
+    AsyncLoading(^{
+      NSString *msg =
+          [NSString stringWithFormat:@"Applying Wallpaper on Display: %@ ...",
+                                     displayNameForDisplayID(dID)];
+
+      loadingMessage(msg);
+
+      launchDaemonOnScreen(videoPath, imagePath, dID);
+    });
   }
 
   PrintDisplays(displays);
@@ -1813,11 +1892,12 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 }
 
 - (void)handleButtonClick:(NSButton *)sender {
-  NSLog(@"Clicked: %@", sender.toolTip);
+  NSString *videoPath =
+      [folderPath stringByAppendingPathComponent:sender.toolTip];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:videoPath])
+    return;
 
-  _videoPath = [folderPath stringByAppendingPathComponent:sender.toolTip];
-
-  [self startWallpaperWithPath:_videoPath];
+  [self startWallpaperWithPath:videoPath];
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
@@ -1989,7 +2069,30 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   return nil;
 }
 
+void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
+                                               void *observer, CFStringRef name,
+                                               const void *object,
+                                               CFDictionaryRef userInfo) {
+  AppDelegate *self = (__bridge AppDelegate *)observer;
+
+  // Call your Objective-C method safely
+  NSString *folderPath = getFolderPath();
+  if (folderPath &&
+      [[NSFileManager defaultManager] fileExistsAtPath:folderPath]) {
+    [self generateStaticWallpapersForFolder:folderPath];
+  }
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+
+  // Add observer to Darwin notification center
+  CFNotificationCenterAddObserver(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      (__bridge const void *)(self), // use self (AppDelegate) or a valid object
+      generateStaticWallpapersForFolderCallback, // a C function callback
+      CFSTR("com.live.wallpaper.generateCache"), NULL,
+      CFNotificationSuspensionBehaviorDeliverImmediately);
+
   [self.blurWindow.contentView setWantsLayer:YES];
   [self.settingsWindow.contentView setWantsLayer:YES];
 
@@ -2019,11 +2122,13 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
                 handleSpaceChange(note);
               }];
 
-  [[[NSWorkspace sharedWorkspace] notificationCenter]
-      addObserver:self
-         selector:@selector(UnlockHandle:)
-             name:NSWorkspaceSessionDidBecomeActiveNotification
-           object:nil];
+  NSDistributedNotificationCenter *center =
+      [NSDistributedNotificationCenter defaultCenter];
+
+  [center addObserver:self
+             selector:@selector(UnlockHandle:)
+                 name:@"com.apple.screenIsUnlocked"
+               object:nil];
 
   NSRect frame = NSMakeRect(0, 0, 800, 600);
   self.blurWindow = [[NSWindow alloc]
@@ -2197,6 +2302,7 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 
   // Reload grid again after window is fully displayed to ensure proper
   // centering
+
   dispatch_async(dispatch_get_main_queue(), ^{
     [self reloadGrid:nil];
   });
@@ -2429,6 +2535,15 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 
   NSLog(@"💥 Quit triggered");
 
+  killAllDaemons();
+  AsyncLoading(^{
+    loadingMessage(@"Killing all daemons exsist...");
+    for (pid_t pid : all_deamon_created) {
+
+      KillProcessByPID(pid);
+    }
+  });
+
   [NSApp terminate:nil];
 }
 
@@ -2577,7 +2692,11 @@ void SaveDisplayConfig() { SaveSystem::Save(displays); }
 
   displays.clear();
   displays = SaveSystem::Load();
+  for (Display &display : displays) {
+    display.screen = DisplayIDFromUUID(display.uuid);
+  }
   if (displays.empty()) {
+
     ScanDisplays();
   }
 
@@ -2602,7 +2721,7 @@ void SaveDisplayConfig() { SaveSystem::Save(displays); }
       }
     }
 
-    for (Display display : displays) {
+    for (Display &display : displays) {
       if (std::any_of(detected.begin(), detected.end(),
                       [&display](const Display &d) {
                         return d.screen == display.screen;
