@@ -273,9 +273,8 @@ NSString *getFolderPath(void) {
 - (void)screensDidChange:(NSNotification *)note {
   // [self startWallpaperWithPath:[NSString
   //                                  stringWithUTF8String:g_videoPath.c_str()]];
-  
-    ScanDisplays();
-  
+
+  ScanDisplays();
 
   usleep(1);
   startLoading(@"Applying wallpapers on new screens...");
@@ -470,6 +469,130 @@ NSString *getFolderPath(void) {
       }
     }
   }
+}
+
+- (void)generateStaticWallpaperForVideo:(NSString *)videoPath
+                             completion:
+                                 (void (^)(BOOL success,
+                                           NSString *imagePath))completion {
+  NSLog(@"Generating static wallpaper for single video: %@", videoPath);
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSString *wallpaperCachePath = [self staticWallpaperChachePath];
+
+  if (![fileManager fileExistsAtPath:wallpaperCachePath]) {
+    [fileManager createDirectoryAtPath:wallpaperCachePath
+           withIntermediateDirectories:YES
+                            attributes:nil
+                                 error:nil];
+  }
+
+  NSString *filename = [videoPath lastPathComponent];
+  if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
+      ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+    NSLog(@"Invalid video format: %@", filename);
+    if (completion)
+      completion(NO, nil);
+    return;
+  }
+
+  dispatch_async(
+      dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        @autoreleasepool {
+          NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
+          AVAsset *asset = [AVAsset assetWithURL:videoURL];
+
+          // Wait for asset to be ready
+          dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+          __block BOOL success = NO;
+          __block NSString *resultImagePath = nil;
+
+          [asset
+              loadValuesAsynchronouslyForKeys:@[ @"tracks", @"duration" ]
+                            completionHandler:^{
+                              AVKeyValueStatus tracksStatus =
+                                  [asset statusOfValueForKey:@"tracks"
+                                                       error:nil];
+                              if (tracksStatus != AVKeyValueStatusLoaded) {
+                                NSLog(@"Failed to load tracks for %@",
+                                      filename);
+                                dispatch_semaphore_signal(semaphore);
+                                return;
+                              }
+
+                              AVAssetImageGenerator *imageGenerator =
+                                  [[AVAssetImageGenerator alloc]
+                                      initWithAsset:asset];
+                              imageGenerator.appliesPreferredTrackTransform =
+                                  YES;
+
+                              // Get full video resolution
+                              AVAssetTrack *videoTrack =
+                                  [[asset tracksWithMediaType:AVMediaTypeVideo]
+                                      firstObject];
+                              if (videoTrack) {
+                                CGSize videoSize = videoTrack.naturalSize;
+                                CGAffineTransform transform =
+                                    videoTrack.preferredTransform;
+                                CGSize renderSize = CGSizeApplyAffineTransform(
+                                    videoSize, transform);
+                                imageGenerator.maximumSize =
+                                    CGSizeMake(fabs(renderSize.width),
+                                               fabs(renderSize.height));
+                              }
+
+                              Float64 midpoint_sec =
+                                  CMTimeGetSeconds(asset.duration) / 2.0;
+                              CMTime midpoint = CMTimeMakeWithSeconds(
+                                  midpoint_sec, asset.duration.timescale);
+
+                              NSError *error = nil;
+                              CGImageRef staticImageRef =
+                                  [imageGenerator copyCGImageAtTime:midpoint
+                                                         actualTime:NULL
+                                                              error:&error];
+
+                              if (staticImageRef && !error) {
+                                NSString *thumbName =
+                                    [[filename stringByDeletingPathExtension]
+                                        stringByAppendingPathExtension:@"png"];
+                                NSString *thumbPath = [wallpaperCachePath
+                                    stringByAppendingPathComponent:thumbName];
+
+                                // Direct PNG write - preserves full quality
+                                CGImageDestinationRef destination =
+                                    CGImageDestinationCreateWithURL(
+                                        (__bridge CFURLRef)
+                                            [NSURL fileURLWithPath:thumbPath],
+                                        kUTTypePNG, 1, NULL);
+                                if (destination) {
+                                  CGImageDestinationAddImage(
+                                      destination, staticImageRef, NULL);
+                                  CGImageDestinationFinalize(destination);
+                                  CFRelease(destination);
+                                  success = YES;
+                                  resultImagePath = thumbPath;
+                                  NSLog(@"Saved full-res PNG: %@", thumbName);
+                                }
+                                CGImageRelease(staticImageRef);
+                              } else {
+                                NSLog(@"Error generating image for %@: %@",
+                                      filename, error.localizedDescription);
+                              }
+                              dispatch_semaphore_signal(semaphore);
+                            }];
+
+          // Wait for completion (with timeout)
+          dispatch_semaphore_wait(
+              semaphore, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC));
+
+          // Call completion handler on main thread
+          dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) {
+              completion(success, resultImagePath);
+            }
+          });
+        }
+      });
 }
 
 - (void)generateStaticWallpapersForFolder:(NSString *)folderPath {
@@ -1789,6 +1912,15 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
   NSString *scaleMode =
       [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
+
+  // Set default scale mode if not set to prevent daemon crash
+  if (!scaleMode || scaleMode.length == 0) {
+    scaleMode = @"fill";
+    [[NSUserDefaults standardUserDefaults] setObject:scaleMode
+                                              forKey:@"scale_mode"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+  }
+
   NSLog(@"Scaling mode: %@", scaleMode);
   if (!displayID) {
     NSLog(@"Display ID not valid %u", displayID);
@@ -1866,9 +1998,25 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 
   NSFileManager *fm = [NSFileManager defaultManager];
   if (![fm fileExistsAtPath:imagePath]) {
-    [self generateStaticWallpapersForFolder:folderPath];
+    NSLog(@"Static wallpaper not found, generating for: %@", videoPath);
 
-    //[self startWallpaperWithPath:videoPath];
+    // Generate static wallpaper for this specific video and retry
+    [self generateStaticWallpaperForVideo:videoPath
+                               completion:^(BOOL success,
+                                            NSString *generatedImagePath) {
+                                 if (success && generatedImagePath) {
+                                   NSLog(@"Static wallpaper generated "
+                                         @"successfully, retrying wallpaper "
+                                         @"application...");
+                                   // Retry applying the wallpaper now that the
+                                   // PNG exists
+                                   [self startWallpaperWithPath:videoPath];
+                                 } else {
+                                   NSLog(@"Failed to generate static wallpaper "
+                                         @"for %@",
+                                         videoPath);
+                                 }
+                               }];
     return;
   }
 
@@ -2088,8 +2236,7 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   // Add observer to Darwin notification center
   CFNotificationCenterAddObserver(
       CFNotificationCenterGetDarwinNotifyCenter(),
-      (__bridge const void *)(self), 
-      generateStaticWallpapersForFolderCallback, 
+      (__bridge const void *)(self), generateStaticWallpapersForFolderCallback,
       CFSTR("com.live.wallpaper.generateCache"), NULL,
       CFNotificationSuspensionBehaviorDeliverImmediately);
 
@@ -2365,8 +2512,8 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   dockView.translatesAutoresizingMaskIntoConstraints = NO;
   [content addSubview:dockView];
 
-  CGFloat dockHeight = 80;   
-  CGFloat bottomOffset = 20; 
+  CGFloat dockHeight = 80;
+  CGFloat bottomOffset = 20;
 
   // Floating dock constraints
   [NSLayoutConstraint activateConstraints:@[
