@@ -180,49 +180,50 @@ NSString *getFolderPath(void) {
   return path;
 }
 - (void)UnlockHandle:(NSNotification *)note {
-    NSLog(@"Unlock detected — waiting for displays to stabilize...");
-    if (buttons.count == 0)
-            return;
+  NSLog(@"Unlock detected — waiting for displays to stabilize...");
+  if (buttons.count == 0)
+    return;
 
-        BOOL randomUnlock =
-            [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"];
-        if (!randomUnlock)
-            return;
+  BOOL randomUnlock =
+      [[NSUserDefaults standardUserDefaults] boolForKey:@"random_unlock"];
+  if (!randomUnlock)
+    return;
 
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC),
-                   dispatch_get_main_queue(), ^{
-                       
+  dispatch_after(
+      dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC),
+      dispatch_get_main_queue(), ^{
         NSLog(@"Applying random wallpaper on screen unlock...");
-
-        
 
         // Re-scan *after* displays are actually available
         ScanDisplays();
         PrintDisplays(displays);
 
         for (Display display : displays) {
-            _selectedDisplays.clear();
-            _selectedDisplays.push_back(display.screen);
+          _selectedDisplays.clear();
+          _selectedDisplays.push_back(display.screen);
 
-            if ([[NSUserDefaults standardUserDefaults] boolForKey:@"random"] &&
-                buttons.count > 0) {
+          if ([[NSUserDefaults standardUserDefaults] boolForKey:@"random"] &&
+              buttons.count > 0) {
 
-                NSLog(@"Loading Random Wallpaper...");
-                NSUInteger randomIndex =
-                    arc4random_uniform((u_int32_t)buttons.count);
-                NSButton *randomButton = buttons[randomIndex];
-                [randomButton performClick:nil];
+            NSLog(@"Loading Random Wallpaper...");
+            NSUInteger randomIndex =
+                arc4random_uniform((u_int32_t)buttons.count);
+            NSButton *randomButton = buttons[randomIndex];
+            [randomButton performClick:nil];
 
-            } else {
-                [self startWallpaperWithPath:
-                    [NSString stringWithUTF8String:display.videoPath.c_str()]];
-            }
+          } else {
+            [self
+                startWallpaperWithPath:[NSString
+                                           stringWithUTF8String:display
+                                                                    .videoPath
+                                                                    .c_str()]];
+          }
 
-            _selectedDisplays.clear();
+          _selectedDisplays.clear();
         }
 
         _selectedDisplays.clear();
-    });
+      });
 }
 
 - (void)screensDidChange:(NSNotification *)note {
@@ -327,6 +328,32 @@ NSString *getFolderPath(void) {
   return thumbnailPath;
 }
 
+- (NSString *)staticWallpaperChachePath {
+  NSArray *cacheDirs = NSSearchPathForDirectoriesInDomains(
+      NSCachesDirectory, NSUserDomainMask, YES);
+  NSString *systemCacheDir = cacheDirs.firstObject;
+  NSString *bundleName =
+      [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
+
+  if (!bundleName || bundleName.length == 0) {
+    bundleName = @"LiveWallpaper";
+  }
+  NSString *wallpapersPath = [systemCacheDir
+      stringByAppendingPathComponent:[NSString
+                                         stringWithFormat:@"%@/wallpapers",
+                                                          bundleName]];
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:wallpapersPath]) {
+    [fm createDirectoryAtPath:wallpapersPath
+        withIntermediateDirectories:YES
+                         attributes:nil
+                              error:nil];
+  }
+
+  return wallpapersPath;
+}
+
 - (void)resetUserData {
   NSString *appDomain = [[NSBundle mainBundle] bundleIdentifier];
   [[NSUserDefaults standardUserDefaults]
@@ -347,6 +374,22 @@ NSString *getFolderPath(void) {
       for (NSString *file in files) {
         NSString *filePath =
             [thumbnailCachePath stringByAppendingPathComponent:file];
+        [fileManager removeItemAtPath:filePath error:nil];
+      }
+    }
+  }
+
+  // --- Clear static wallpapers -----
+
+  NSString *sWallpapersCachePath = [self staticWallpaperChachePath];
+  if ([fileManager fileExistsAtPath:sWallpapersCachePath]) {
+    NSError *error = nil;
+    NSArray *files = [fileManager contentsOfDirectoryAtPath:sWallpapersCachePath
+                                                      error:&error];
+    if (!error) {
+      for (NSString *file in files) {
+        NSString *filePath =
+            [sWallpapersCachePath stringByAppendingPathComponent:file];
         [fileManager removeItemAtPath:filePath error:nil];
       }
     }
@@ -376,6 +419,120 @@ NSString *getFolderPath(void) {
     }
   }
 }
+
+- (void)generateStaticWallpapersForFolder:(NSString *)folderPath {
+  NSLog(@"Generating wallpapers...");
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSString *wallpaperCachePath = [self staticWallpaperChachePath];
+
+  //[self clearCache];
+  if (![fileManager fileExistsAtPath:wallpaperCachePath]) {
+    [fileManager createDirectoryAtPath:wallpaperCachePath
+           withIntermediateDirectories:YES
+                            attributes:nil
+                                 error:nil];
+  }
+
+  NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
+                                                                error:nil];
+  if (files.count == 0) {
+    NSLog(@"No files found in folder: %@", folderPath);
+    return;
+  }
+
+  dispatch_queue_t wallpaperQueue = dispatch_queue_create(
+      "com.app.wallpaperQueue", DISPATCH_QUEUE_CONCURRENT);
+  dispatch_semaphore_t semaphore = dispatch_semaphore_create(4);
+
+  for (NSString *filename in files) {
+    if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
+        ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+      continue;
+    }
+
+    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+    dispatch_async(wallpaperQueue, ^{
+      @autoreleasepool {
+        NSString *filePath =
+            [folderPath stringByAppendingPathComponent:filename];
+        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
+        AVAsset *asset = [AVAsset assetWithURL:videoURL];
+
+        // Wait for asset to be ready
+        [asset
+            loadValuesAsynchronouslyForKeys:@[ @"tracks" ]
+                          completionHandler:^{
+                            AVKeyValueStatus tracksStatus =
+                                [asset statusOfValueForKey:@"tracks" error:nil];
+                            if (tracksStatus != AVKeyValueStatusLoaded) {
+                              NSLog(@"Failed to load tracks for %@", filename);
+                              dispatch_semaphore_signal(semaphore);
+                              return;
+                            }
+
+                            AVAssetImageGenerator *imageGenerator =
+                                [[AVAssetImageGenerator alloc]
+                                    initWithAsset:asset];
+                            imageGenerator.appliesPreferredTrackTransform = YES;
+
+                            // Get full video resolution
+                            AVAssetTrack *videoTrack =
+                                [[asset tracksWithMediaType:AVMediaTypeVideo]
+                                    firstObject];
+                            if (videoTrack) {
+                              CGSize videoSize = videoTrack.naturalSize;
+                              CGAffineTransform transform =
+                                  videoTrack.preferredTransform;
+                              CGSize renderSize = CGSizeApplyAffineTransform(
+                                  videoSize, transform);
+                              imageGenerator.maximumSize =
+                                  CGSizeMake(fabs(renderSize.width),
+                                             fabs(renderSize.height));
+                            }
+
+                            Float64 midpoint_sec =
+                                CMTimeGetSeconds(asset.duration) / 2.0;
+                            CMTime midpoint = CMTimeMakeWithSeconds(
+                                midpoint_sec, asset.duration.timescale);
+
+                            NSError *error = nil;
+                            CGImageRef staticImageRef =
+                                [imageGenerator copyCGImageAtTime:midpoint
+                                                       actualTime:NULL
+                                                            error:&error];
+
+                            if (staticImageRef && !error) {
+                              NSString *thumbName =
+                                  [[filename stringByDeletingPathExtension]
+                                      stringByAppendingPathExtension:@"png"];
+                              NSString *thumbPath = [wallpaperCachePath
+                                  stringByAppendingPathComponent:thumbName];
+
+                              // Direct PNG write - preserves full quality
+                              CGImageDestinationRef destination =
+                                  CGImageDestinationCreateWithURL(
+                                      (__bridge CFURLRef)
+                                          [NSURL fileURLWithPath:thumbPath],
+                                      kUTTypePNG, 1, NULL);
+                              if (destination) {
+                                CGImageDestinationAddImage(
+                                    destination, staticImageRef, NULL);
+                                CGImageDestinationFinalize(destination);
+                                CFRelease(destination);
+                              }
+                              CGImageRelease(staticImageRef);
+                              NSLog(@"Saved full-res PNG: %@", thumbName);
+                            } else {
+                              NSLog(@"Error generating image for %@: %@",
+                                    filename, error.localizedDescription);
+                            }
+                            dispatch_semaphore_signal(semaphore);
+                          }];
+      }
+    });
+  }
+}
+
 - (void)generateThumbnailsForFolder:(NSString *)folderPath {
   NSLog(@"Generating Thumbnails...");
   NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -570,6 +727,7 @@ NSString *getFolderPath(void) {
           // Background: heavy I/O work
           [self clearCache];
           [self generateThumbnailsForFolder:getFolderPath()];
+          [self generateStaticWallpapersForFolder:getFolderPath()];
           NSLog(@"Background processing complete: %@", path);
 
           dispatch_async(dispatch_get_main_queue(), ^{
@@ -1631,25 +1789,19 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
     return;
   }
 
-  NSString *appSupportDir = [NSSearchPathForDirectoriesInDomains(
-      NSApplicationSupportDirectory, NSUserDomainMask, YES) firstObject];
-  NSString *customDir =
-      [appSupportDir stringByAppendingPathComponent:@"Livewall"];
-  [[NSFileManager defaultManager] createDirectoryAtPath:customDir
-                            withIntermediateDirectories:YES
-                                             attributes:nil
-                                                  error:nil];
+  checkFolderPath();
 
-  // Compose full output path
   NSString *imageFilename =
-      [NSString stringWithFormat:@"%s.jpg", videoName.c_str()];
-  NSString *imagePath =
-      [customDir stringByAppendingPathComponent:imageFilename];
-  frame = std::string([imagePath UTF8String]);
+      [NSString stringWithFormat:@"%s.png", (const char *)videoName.c_str()];
+  NSString *imagePath = [[self staticWallpaperChachePath]
+      stringByAppendingPathComponent:imageFilename];
+
+  NSFileManager *fm = [NSFileManager defaultManager];
+  if (![fm fileExistsAtPath:imagePath]) {
+    [self generateStaticWallpapersForFolder:folderPath];
+  }
 
   NSLog(@"videoPath = %@", videoPath);
-
-  // launchDaemon(videoPath, imagePath);
 
   for (CGDirectDisplayID dID : _selectedDisplays) {
     launchDaemonOnScreen(videoPath, imagePath, dID);
@@ -1658,12 +1810,6 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   PrintDisplays(displays);
 
   LogMemoryUsage();
-
-  // dispatch_after(
-  //     dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.7 * NSEC_PER_SEC)),
-  //     dispatch_get_main_queue(), ^{
-  //       set_wallpaper_all_spaces(frame);
-  //     });
 }
 
 - (void)handleButtonClick:(NSButton *)sender {
