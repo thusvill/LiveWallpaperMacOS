@@ -964,21 +964,12 @@ NSTextField *CreateLabel(NSString *string) {
   self.settingsWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
 
   // Add glass background
-  NSView *glassView = nil;
-  if (@available(macOS 26.0, *)) {
-    NSGlassEffectView *effView = [[NSGlassEffectView alloc]
-        initWithFrame:self.settingsWindow.contentView.bounds];
-    effView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    glassView = effView;
-  } else {
-    NSVisualEffectView *fallbackView = [[NSVisualEffectView alloc]
-        initWithFrame:self.settingsWindow.contentView.bounds];
-    fallbackView.material = NSVisualEffectMaterialHUDWindow;
-    fallbackView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    fallbackView.state = NSVisualEffectStateActive;
-    fallbackView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    glassView = fallbackView;
-  }
+  NSVisualEffectView *glassView = [[NSVisualEffectView alloc]
+      initWithFrame:self.settingsWindow.contentView.bounds];
+  glassView.material = NSVisualEffectMaterialHUDWindow;
+  glassView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  glassView.state = NSVisualEffectStateActive;
+  glassView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
   [self.settingsWindow.contentView addSubview:glassView
                                    positioned:NSWindowBelow
                                    relativeTo:nil];
@@ -2308,27 +2299,14 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 
   [self.blurWindow setBackgroundColor:[NSColor clearColor]];
 
-  NSView *effectView = nil;
-
-  if (@available(macOS 26.0, *)) {
-    // macOS 26+ uses NSGlassEffectView (Liquid Glass)
-    NSGlassEffectView *blurView = [[NSGlassEffectView alloc]
-        initWithFrame:[[self.blurWindow contentView] bounds]];
-    [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    [blurView setWantsLayer:YES];
-    effectView = blurView;
-  } else {
-    // fallback for macOS 15 and older
-    NSVisualEffectView *blurView = [[NSVisualEffectView alloc]
-        initWithFrame:[[self.blurWindow contentView] bounds]];
-    blurView.material =
-        NSVisualEffectMaterialHUDWindow; // or Menu, Sidebar etc.
-    blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    blurView.state = NSVisualEffectStateActive;
-    [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    [blurView setWantsLayer:YES];
-    effectView = blurView;
-  }
+  // Use NSVisualEffectView for blur effect
+  NSVisualEffectView *effectView = [[NSVisualEffectView alloc]
+      initWithFrame:[[self.blurWindow contentView] bounds]];
+  effectView.material = NSVisualEffectMaterialHUDWindow;
+  effectView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  effectView.state = NSVisualEffectStateActive;
+  [effectView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  [effectView setWantsLayer:YES];
 
   // add the effect view below everything
   [[self.blurWindow contentView] addSubview:effectView
@@ -2525,28 +2503,19 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   ]];
 
   // Background blur / liquid glass
-  NSView *effectView;
-  if (@available(macOS 26.0, *)) {
-    NSGlassEffectView *blurView =
-        [[NSGlassEffectView alloc] initWithFrame:NSZeroRect];
-    blurView.translatesAutoresizingMaskIntoConstraints = NO;
-    blurView.style = NSGlassEffectViewStyleClear;
-    effectView = blurView;
-  } else {
-    NSVisualEffectView *blurView =
-        [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
-    blurView.material = NSVisualEffectMaterialHUDWindow;
-    blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    blurView.state = NSVisualEffectStateActive;
-    blurView.translatesAutoresizingMaskIntoConstraints = NO;
-    effectView = blurView;
-  }
-  [dockView addSubview:effectView positioned:NSWindowBelow relativeTo:nil];
+  NSVisualEffectView *blurView =
+      [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
+  blurView.material = NSVisualEffectMaterialHUDWindow;
+  blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  blurView.state = NSVisualEffectStateActive;
+  blurView.translatesAutoresizingMaskIntoConstraints = NO;
+
+  [dockView addSubview:blurView positioned:NSWindowBelow relativeTo:nil];
   [NSLayoutConstraint activateConstraints:@[
-    [effectView.topAnchor constraintEqualToAnchor:dockView.topAnchor],
-    [effectView.bottomAnchor constraintEqualToAnchor:dockView.bottomAnchor],
-    [effectView.leadingAnchor constraintEqualToAnchor:dockView.leadingAnchor],
-    [effectView.trailingAnchor constraintEqualToAnchor:dockView.trailingAnchor]
+    [blurView.topAnchor constraintEqualToAnchor:dockView.topAnchor],
+    [blurView.bottomAnchor constraintEqualToAnchor:dockView.bottomAnchor],
+    [blurView.leadingAnchor constraintEqualToAnchor:dockView.leadingAnchor],
+    [blurView.trailingAnchor constraintEqualToAnchor:dockView.trailingAnchor]
   ]];
 
   // Horizontal stack view for buttons
