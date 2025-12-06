@@ -17,6 +17,9 @@
  */
 #import <AVFoundation/AVFoundation.h>
 #include <AppKit/AppKit.h>
+
+#import <IOKit/graphics/IOGraphicsLib.h>
+
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
 #include <Foundation/Foundation.h>
@@ -216,6 +219,27 @@
   [_players removeAllObjects];
   [_playerLayers removeAllObjects];
   [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
+}
+
+static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
+                                             void *observer, CFStringRef name,
+                                             const void *object,
+                                             CFDictionaryRef userInfo) {
+  VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
+  [daemon terminateWallpaperDaemon];
+}
+
+- (void)terminateWallpaperDaemon {
+  NSLog(@"Received terminate notification");
+  for (NSWindow *window in _windows) {
+    [window setReleasedWhenClosed:YES];
+    [window close];
+  }
+  [_windows removeAllObjects];
+  [_players removeAllObjects];
+  [_playerLayers removeAllObjects];
+  [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
+  exit(0);
 }
 
 // - (BOOL)shouldPlayWallpaper {
@@ -432,20 +456,59 @@
     default:
       break;
     }
-
     NSDictionary *options = @{
       NSWorkspaceDesktopImageScalingKey : @(scaling),
-      NSWorkspaceDesktopImageAllowClippingKey : @(allowClipping)
+      NSWorkspaceDesktopImageAllowClippingKey : @(allowClipping),
+      NSWorkspaceDesktopImageFillColorKey : [NSColor blackColor]
     };
 
     NSURL *imageURL = [NSURL fileURLWithPath:_framePath];
     NSError *error = nil;
+
+    {
+      NSNumber *screenNumber =
+          _targetScreen.deviceDescription[@"NSScreenNumber"];
+      CGDirectDisplayID did =
+          (CGDirectDisplayID)[screenNumber unsignedIntValue];
+
+      // Get display info from IOKit (public API)
+      CFDictionaryRef displayInfo = IODisplayCreateInfoDictionary(
+          CGDisplayIOServicePort(did), kIOReturnSuccess);
+
+      if (displayInfo) {
+        NSDictionary *info = (__bridge NSDictionary *)displayInfo;
+
+        NSString *uuid = info[@"DisplayUUID"];
+        if (uuid) {
+          // Build the desktop dictionary that macOS uses internally
+          NSMutableDictionary *desktopSpec = [NSMutableDictionary dictionary];
+          desktopSpec[@"ImageFilePath"] = _framePath;
+          desktopSpec[@"ImageFileURL"] = [imageURL absoluteString];
+          desktopSpec[@"NewDisplayDictionary"] = @{
+            @"desktop-picture-options" : @{
+              @"picture-options" : @(scaling),
+              @"allow-clipping" : @(allowClipping),
+              @"fill-color" : @"0 0 0"
+            }
+          };
+
+          // Write to com.apple.desktop preferences
+          CFPreferencesSetAppValue((__bridge CFStringRef)uuid,
+                                   (__bridge CFPropertyListRef)desktopSpec,
+                                   CFSTR("com.apple.desktop"));
+          CFPreferencesAppSynchronize(CFSTR("com.apple.desktop"));
+        }
+
+        CFRelease(displayInfo);
+      }
+    }
 
     BOOL success =
         [[NSWorkspace sharedWorkspace] setDesktopImageURL:imageURL
                                                 forScreen:_targetScreen
                                                   options:options
                                                     error:&error];
+
     return success;
   }
 }
@@ -466,7 +529,9 @@ static void SpaceChangeCallback(CFNotificationCenterRef center, void *observer,
                                 CFStringRef name, const void *object,
                                 CFDictionaryRef userInfo) {
   VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
-  [daemon setStaticWallpaper];
+  if ([daemon setStaticWallpaper]) {
+    NSLog(@"Wallpaper applied successfully!");
+  }
 }
 
 static void AutoPauseChangedCallback(CFNotificationCenterRef center,
@@ -500,7 +565,7 @@ int main(int argc, const char *argv[]) {
     [NSApp finishLaunching];
 
     if (argc < 4) {
-      NSLog(@"Usage: %s <video.mp4> <frame_output.png> <volume> <scale_mode> "
+      NSLog(@"Usage: %s <video.mp4> <frame_output.heic> <volume> <scale_mode> "
             @"<display_id(optional)>",
             argv[0]);
       return 1;
@@ -547,6 +612,11 @@ int main(int argc, const char *argv[]) {
         CFNotificationCenterGetDarwinNotifyCenter(),
         (__bridge const void *)(daemon), SpaceChangeCallback,
         CFSTR("com.live.wallpaper.spaceChanged"), NULL,
+        CFNotificationSuspensionBehaviorDeliverImmediately);
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        (__bridge const void *)daemon, terminateWallpaperDaemonCallback,
+        CFSTR("com.live.wallpaper.terminate"), NULL,
         CFNotificationSuspensionBehaviorDeliverImmediately);
 
     [[NSRunLoop mainRunLoop] run];
