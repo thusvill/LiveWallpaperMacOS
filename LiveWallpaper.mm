@@ -48,8 +48,6 @@
 #include <stdexcept>
 #include <string>
 
-#define MAX_HEIGHT 500
-
 #if !__has_include(<AppKit/NSGlassEffectView.h>)
 @class NSVisualEffectView;
 typedef NSVisualEffectView NSGlassEffectView;
@@ -146,6 +144,9 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @property(strong) NSArray<NSLayoutConstraint *> *dockWidthConstraints;
 
 @property(nonatomic, assign) std::list<CGDirectDisplayID> selectedDisplays;
+
+@property(assign) Boolean generatingImages;
+@property(assign) Boolean generatingThumbImages;
 
 @end
 
@@ -249,12 +250,15 @@ NSString *getFolderPath(void) {
           NSString *imageName = [videoName stringByDeletingPathExtension];
           NSString *imagePath =
               [cacheDir stringByAppendingPathComponent:imageName];
-          imagePath = [imagePath stringByAppendingPathExtension:@"heic"];
+          imagePath = [imagePath stringByAppendingPathExtension:@"png"];
 
-          if (![fm fileExistsAtPath:imagePath]) {
+          if (![fm fileExistsAtPath:imagePath] && !_generatingImages) {
+
             AsyncLoading(^{
               [strongSelf generateStaticWallpapersForFolder:folderPath];
             });
+
+            return;
           }
 
           NSLog(@"🎲 Screen %lu: %@ → %@", [screenID unsignedLongValue],
@@ -476,102 +480,12 @@ NSString *getFolderPath(void) {
   }
 }
 
-- (void)generateStaticWallpaperForVideo:(NSString *)videoPath
-                             completion:
-                                 (void (^)(BOOL success,
-                                           NSString *imagePath))completion {
-  NSLog(@"Generating static wallpaper for single video: %@", videoPath);
-  NSFileManager *fileManager = [NSFileManager defaultManager];
-  NSString *wallpaperCachePath = [self staticWallpaperChachePath];
-
-  if (![fileManager fileExistsAtPath:wallpaperCachePath]) {
-    [fileManager createDirectoryAtPath:wallpaperCachePath
-           withIntermediateDirectories:YES
-                            attributes:nil
-                                 error:nil];
-  }
-
-  NSString *filename = [videoPath lastPathComponent];
-  if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
-      ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
-    NSLog(@"Invalid video format: %@", filename);
-    if (completion)
-      completion(NO, nil);
-    return;
-  }
-
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_DEFAULT, 0), ^{
-    @autoreleasepool {
-      NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
-      AVAsset *asset = [AVAsset assetWithURL:videoURL];
-      AVAssetImageGenerator *generator =
-          [[AVAssetImageGenerator alloc] initWithAsset:asset];
-      generator.appliesPreferredTrackTransform = YES;
-
-      Float64 midpoint_sec = CMTimeGetSeconds(asset.duration) / 2.0;
-      CMTime midpoint =
-          CMTimeMakeWithSeconds(midpoint_sec, asset.duration.timescale);
-      NSValue *timeValue = [NSValue valueWithCMTime:midpoint];
-
-      [generator
-          generateCGImagesAsynchronouslyForTimes:@[ timeValue ]
-                               completionHandler:^(
-                                   CMTime requestedTime, CGImageRef image,
-                                   CMTime actualTime,
-                                   AVAssetImageGeneratorResult result,
-                                   NSError *error) {
-                                 BOOL success = NO;
-                                 NSString *resultPath = nil;
-
-                                 if (result == AVAssetImageGeneratorSucceeded &&
-                                     image != NULL) {
-                                   CGImageRef retainedImage =
-                                       CGImageRetain(image);
-                                   NSString *thumbName = [[filename
-                                       stringByDeletingPathExtension]
-                                       stringByAppendingPathExtension:@"heic"];
-                                   NSString *thumbPath = [wallpaperCachePath
-                                       stringByAppendingPathComponent:
-                                           thumbName];
-                                   NSURL *thumbURL =
-                                       [NSURL fileURLWithPath:thumbPath];
-
-                                   CGImageDestinationRef destination =
-                                       CGImageDestinationCreateWithURL(
-                                           (__bridge CFURLRef)thumbURL,
-                                           (__bridge CFStringRef)
-                                               UTTypeHEIC.identifier,
-                                           1, NULL);
-
-                                   if (destination) {
-                                     CGImageDestinationAddImage(
-                                         destination, retainedImage, NULL);
-                                     if (CGImageDestinationFinalize(
-                                             destination)) {
-                                       success = YES;
-                                       resultPath = thumbPath;
-                                       NSLog(@"Saved full-res HEIC: %@",
-                                             thumbName);
-                                     }
-                                     CFRelease(destination);
-                                   }
-                                   CGImageRelease(retainedImage);
-                                 } else {
-                                   NSLog(@"Failed to generate image for %@: %@",
-                                         filename, error);
-                                 }
-
-                                 dispatch_async(dispatch_get_main_queue(), ^{
-                                   if (completion) {
-                                     completion(success, resultPath);
-                                   }
-                                 });
-                               }];
-    }
-  });
-}
-
 - (void)generateStaticWallpapersForFolder:(NSString *)folderPath {
+  if (_generatingImages) {
+    return;
+  } else {
+    _generatingImages = true;
+  }
   NSLog(@"Generating wallpapers...");
   NSFileManager *fileManager = [NSFileManager defaultManager];
   NSString *wallpaperCachePath = [self staticWallpaperChachePath];
@@ -598,6 +512,10 @@ NSString *getFolderPath(void) {
   dispatch_queue_t wallpaperQueue = dispatch_queue_create(
       "com.app.wallpaperQueue", DISPATCH_QUEUE_CONCURRENT);
 
+  static dispatch_semaphore_t wallpaperSemaphore;
+  if (!wallpaperSemaphore)
+    wallpaperSemaphore = dispatch_semaphore_create(2);
+
   for (NSString *filename in files) {
     if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
         ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
@@ -606,6 +524,9 @@ NSString *getFolderPath(void) {
 
     dispatch_async(wallpaperQueue,
                    ^{
+                     dispatch_semaphore_wait(wallpaperSemaphore,
+                                             DISPATCH_TIME_FOREVER);
+
                      @autoreleasepool {
                        NSString *filePath =
                            [folderPath stringByAppendingPathComponent:filename];
@@ -685,7 +606,7 @@ NSString *getFolderPath(void) {
                                                                                           [[filename
                                                                                               stringByDeletingPathExtension]
                                                                                               stringByAppendingPathExtension:
-                                                                                                  @"heic"];
+                                                                                                  @"png"];
                                                                                       NSString *thumbPath =
                                                                                           [wallpaperCachePath
                                                                                               stringByAppendingPathComponent:
@@ -699,7 +620,7 @@ NSString *getFolderPath(void) {
                                                                                           (__bridge CFURLRef)
                                                                                               thumbURL,
                                                                                           (__bridge CFStringRef)
-                                                                                              UTTypeHEIC
+                                                                                              UTTypePNG
                                                                                                   .identifier,
                                                                                           1,
                                                                                           NULL);
@@ -711,7 +632,7 @@ NSString *getFolderPath(void) {
                                                                                         if (!CGImageDestinationFinalize(
                                                                                                 dest)) {
                                                                                           NSLog(
-                                                                                              @"Failed to finalize HEIC for %@",
+                                                                                              @"Failed to finalize PNG for %@",
                                                                                               thumbName);
                                                                                         }
                                                                                         CFRelease(
@@ -738,13 +659,21 @@ NSString *getFolderPath(void) {
                                                                                               .localizedDescription);
                                                                                     }
                                                                                   }];
+                                              dispatch_semaphore_signal(
+                                                  wallpaperSemaphore);
                                             }];
                      }
                    });
   }
+  _generatingImages = false;
 }
 
 - (void)generateThumbnailsForFolder:(NSString *)folderPath {
+  if (_generatingThumbImages) {
+    return;
+  } else {
+    _generatingThumbImages = true;
+  }
   NSLog(@"Generating Thumbnails...");
   NSFileManager *fileManager = [NSFileManager defaultManager];
   NSString *thumbnailCachePath = [self thumbnailCachePath];
@@ -767,6 +696,10 @@ NSString *getFolderPath(void) {
   dispatch_queue_t thumbnailQueue = dispatch_queue_create(
       "com.app.thumbnailQueue", DISPATCH_QUEUE_CONCURRENT);
 
+  static dispatch_semaphore_t thumbnailSemaphore;
+  if (!thumbnailSemaphore)
+    thumbnailSemaphore = dispatch_semaphore_create(2);
+
   for (NSString *filename in files) {
     if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
         ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
@@ -775,6 +708,8 @@ NSString *getFolderPath(void) {
 
     dispatch_async(
         thumbnailQueue, ^{
+          dispatch_semaphore_wait(thumbnailSemaphore, DISPATCH_TIME_FOREVER);
+
           @autoreleasepool {
             NSString *filePath =
                 [folderPath stringByAppendingPathComponent:filename];
@@ -863,10 +798,10 @@ NSString *getFolderPath(void) {
                                                                          [[filename
                                                                              stringByDeletingPathExtension]
                                                                              stringByAppendingPathExtension:
-                                                                                 @"heic"];
+                                                                                 @"png"];
                                                                      NSString *thumbPath =
                                                                          [[self
-                                                                             staticWallpaperChachePath]
+                                                                             thumbnailCachePath]
                                                                              stringByAppendingPathComponent:
                                                                                  thumbName];
                                                                      NSURL *thumbURL =
@@ -893,10 +828,10 @@ NSString *getFolderPath(void) {
                                                                            [[filename
                                                                                stringByDeletingPathExtension]
                                                                                stringByAppendingPathExtension:
-                                                                                   @"heic"];
+                                                                                   @"png"];
                                                                        NSString *thumbPath =
                                                                            [[self
-                                                                               staticWallpaperChachePath]
+                                                                               thumbnailCachePath]
                                                                                stringByAppendingPathComponent:
                                                                                    thumbName];
                                                                        NSURL *thumbURL =
@@ -909,7 +844,7 @@ NSString *getFolderPath(void) {
                                                                                (__bridge CFURLRef)
                                                                                    thumbURL,
                                                                                (__bridge CFStringRef)
-                                                                                   UTTypeHEIC
+                                                                                   UTTypePNG
                                                                                        .identifier,
                                                                                1,
                                                                                NULL);
@@ -926,18 +861,18 @@ NSString *getFolderPath(void) {
                                                                                [thumbPath
                                                                                    copy];
                                                                            NSLog(
-                                                                               @"Saved HEIC wallpaper: %@",
+                                                                               @"Saved PNG thumbnail: %@",
                                                                                thumbName);
                                                                          } else {
                                                                            NSLog(
-                                                                               @"Failed to finalize HEIC for %@",
+                                                                               @"Failed to finalize PNG for %@",
                                                                                thumbName);
                                                                          }
                                                                          CFRelease(
                                                                              destination);
                                                                        } else {
                                                                          NSLog(
-                                                                             @"Failed to create HEIC destination for %@",
+                                                                             @"Failed to create PNG destination for %@",
                                                                              thumbName);
                                                                        }
 
@@ -1009,7 +944,7 @@ NSString *getFolderPath(void) {
                                                                                                                                  (__bridge CFURLRef)
                                                                                                                                      thumbURL,
                                                                                                                                  (__bridge CFStringRef)
-                                                                                                                                     UTTypeHEIC
+                                                                                                                                     UTTypePNG
                                                                                                                                          .identifier,
                                                                                                                                  1,
                                                                                                                                  NULL);
@@ -1025,7 +960,7 @@ NSString *getFolderPath(void) {
                                                                                                                                      ^{
                                                                                                                                        NSString *msg = [NSString
                                                                                                                                            stringWithFormat:
-                                                                                                                                               @"Generated StaticWallpaper %@",
+                                                                                                                                               @"Generated Thumbnail %@",
                                                                                                                                                thumbName];
                                                                                                                                        loadingMessage(
                                                                                                                                            msg);
@@ -1056,13 +991,19 @@ NSString *getFolderPath(void) {
                                                                            ^{
                                                                              NSString *msg = [NSString
                                                                                  stringWithFormat:
-                                                                                     @"Generated StaticWallpaper %@",
+                                                                                     @"Generated Thumbnail %@",
                                                                                      [savedPath
                                                                                          lastPathComponent]];
                                                                              loadingMessage(
                                                                                  msg);
                                                                            });
                                                                      }
+
+                                                                     dispatch_semaphore_signal(
+                                                                         thumbnailSemaphore);
+
+                                                                     _generatingThumbImages =
+                                                                         false;
                                                                    }];
                                  }];
           }
@@ -2017,14 +1958,16 @@ NSTextField *CreateLabel(NSString *string) {
       NSString *cacheImagePath = [[self thumbnailCachePath]
           stringByAppendingPathComponent:
               [[filename stringByDeletingPathExtension]
-                  stringByAppendingPathExtension:@"jpg"]];
+                  stringByAppendingPathExtension:@"png"]];
 
       NSImage *image = [[NSImage alloc] initWithContentsOfFile:cacheImagePath];
       if (image) {
         btn.image = image;
       } else {
         NSLog(@"Thumbnail not found for %@", cacheImagePath);
-        [self generateThumbnailsForFolder:getFolderPath()];
+        if (_generatingThumbImages == false) {
+          [self generateThumbnailsForFolder:getFolderPath()];
+        }
       }
 
       btn.layer.cornerRadius = 10;
@@ -2056,7 +1999,7 @@ NSTextField *CreateLabel(NSString *string) {
   NSArray *contents =
       [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath
                                                           error:nil];
-  if (contents.count == 0) {
+  if (contents.count == 0 && !_generatingThumbImages) {
     checkFolderPath();
     [self generateThumbnailsForFolder:getFolderPath()];
   }
@@ -2126,9 +2069,6 @@ NSTextField *CreateLabel(NSString *string) {
         }
       }
       completionHandler:nil];
-
-  NSSize maxSize = NSMakeSize(CGFLOAT_MAX, MAX_HEIGHT);
-  [self.blurWindow setMaxSize:maxSize];
 }
 
 void killAllDaemons() {
@@ -2265,35 +2205,22 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
   checkFolderPath();
 
   NSString *imageFilename =
-      [NSString stringWithFormat:@"%s.heic", (const char *)videoName.c_str()];
+      [NSString stringWithFormat:@"%s.png", (const char *)videoName.c_str()];
   NSString *imagePath = [[self staticWallpaperChachePath]
       stringByAppendingPathComponent:imageFilename];
 
   NSFileManager *fm = [NSFileManager defaultManager];
-  if (![fm fileExistsAtPath:imagePath]) {
+  if (![fm fileExistsAtPath:imagePath] && !_generatingImages) {
     NSLog(@"Static wallpaper not found, generating for: %@", videoPath);
 
-    [self
-        generateStaticWallpaperForVideo:videoPath
-                             completion:^(BOOL success,
-                                          NSString *generatedImagePath) {
-                               if (success && generatedImagePath) {
-                                 NSLog(@"Static wallpaper generated "
-                                       @"successfully, retrying wallpaper "
-                                       @"application...");
-                                 for (id observer in self
-                                          .notificationObservers) {
-                                   [[NSNotificationCenter defaultCenter]
-                                       removeObserver:observer];
-                                 }
-                                 [self.notificationObservers removeAllObjects];
+    CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFSTR("com.live.wallpaper.terminate"), NULL, NULL, true);
 
-                               } else {
-                                 NSLog(@"Failed to generate static wallpaper "
-                                       @"for %@",
-                                       videoPath);
-                               }
-                             }];
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      [self generateStaticWallpapersForFolder:getFolderPath()];
+    });
   }
 
   NSLog(@"videoPath = %@", videoPath);
@@ -2325,14 +2252,10 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
-
-  CGFloat fixedWidth = 800;
-  CGFloat maxHeight = MAX_HEIGHT;
-  if (proposedFrameSize.height > maxHeight) {
-    return NSMakeSize(fixedWidth, maxHeight);
-  }
-  return NSMakeSize(fixedWidth, proposedFrameSize.height);
+  
+  return proposedFrameSize;
 }
+
 - (void)openWallpaperFolder:(id)sender {
   checkFolderPath();
   NSFileManager *fm = [NSFileManager defaultManager];
@@ -2568,9 +2491,6 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 
   [self.blurWindow makeKeyAndOrderFront:nil];
 
-  NSSize maxSize = NSMakeSize(CGFLOAT_MAX, 450);
-  self.blurWindow.maxSize = maxSize;
-
   self.blurWindow.delegate = self;
 
   if (@available(macOS 10.12.2, *)) {
@@ -2583,6 +2503,8 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   [self.blurWindow setOpaque:NO];
 
   [self.blurWindow setBackgroundColor:[NSColor clearColor]];
+
+  self.blurWindow.minSize = NSMakeSize(600, 250);
 
   NSView *effectView = nil;
 
@@ -2624,14 +2546,24 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   self.blurWindow.titlebarAppearsTransparent = YES;
   self.blurWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
 
-  self.blurWindow.maxSize = NSMakeSize(CGFLOAT_MAX, MAX_HEIGHT);
-
   NSStackView *mainStack = [[NSStackView alloc] init];
   mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
   mainStack.distribution = NSStackViewDistributionFill;
   mainStack.alignment = NSLayoutAttributeLeading;
   mainStack.spacing = 12;
   mainStack.translatesAutoresizingMaskIntoConstraints = NO;
+  [mainStack
+      setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
+                               forOrientation:
+                                   NSLayoutConstraintOrientationVertical];
+  [mainStack setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                        forOrientation:NSLayoutConstraintOrientationVertical];
+
+[mainStack setContentCompressionResistancePriority:NSLayoutPriorityFittingSizeCompression 
+                                       forOrientation:NSLayoutConstraintOrientationVertical];
+[mainStack setContentHuggingPriority:NSLayoutPriorityDefaultLow 
+                           forOrientation:NSLayoutConstraintOrientationVertical];
+
   [content addSubview:mainStack];
 
   [NSLayoutConstraint activateConstraints:@[
@@ -2709,22 +2641,28 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
         constraintEqualToAnchor:scrollView.contentView.bottomAnchor],
   ]];
 
-  CGFloat maxWidth = 800.0;
-  [gridContainer.widthAnchor constraintLessThanOrEqualToConstant:maxWidth]
-      .active = YES;
+
+  [scrollView
+      setContentCompressionResistancePriority:
+          NSLayoutPriorityFittingSizeCompression
+                               forOrientation:
+                                   NSLayoutConstraintOrientationVertical];
+  [scrollView setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                         forOrientation:NSLayoutConstraintOrientationVertical];
+
 
   [gridContainer
-      setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                 forOrientation:NSLayoutConstraintOrientationHorizontal];
-  [gridContainer
-      setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
+      setContentCompressionResistancePriority:
+          NSLayoutPriorityFittingSizeCompression
                                forOrientation:
-                                   NSLayoutConstraintOrientationHorizontal];
+                                   NSLayoutConstraintOrientationVertical];
+  [gridContainer
+      setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                 forOrientation:NSLayoutConstraintOrientationVertical];
 
   [self reloadGrid:nil];
 
-  // Reload grid again after window is fully displayed to ensure proper
-  // centering
+
 
   dispatch_async(dispatch_get_main_queue(), ^{
     [self reloadGrid:nil];

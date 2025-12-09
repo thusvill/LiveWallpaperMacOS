@@ -565,7 +565,7 @@ int main(int argc, const char *argv[]) {
     [NSApp finishLaunching];
 
     if (argc < 4) {
-      NSLog(@"Usage: %s <video.mp4> <frame_output.heic> <volume> <scale_mode> "
+      NSLog(@"Usage: %s <video.mp4> <frame_output.png> <volume> <scale_mode> "
             @"<display_id(optional)>",
             argv[0]);
       return 1;
