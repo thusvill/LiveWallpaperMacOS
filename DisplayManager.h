@@ -155,7 +155,7 @@ inline bool KillProcessByPID(pid_t pid) {
       return true;
       std::printf("Process killed: %d\n", pid);
     }
-    usleep(100000);
+    usleep(10000);
   }
 
   kill(pid, SIGKILL);
@@ -165,7 +165,7 @@ inline bool KillProcessByPID(pid_t pid) {
 
       return true;
     }
-    usleep(100000);
+    usleep(10000);
   }
   printf("Process not killed");
   return false;
@@ -246,7 +246,7 @@ static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
 
       if (display.daemon) {
         KillProcessByPID(display.daemon);
-        usleep(1);
+        usleep(100000);
       }
 
       display.daemon = daemon_PID;

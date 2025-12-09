@@ -53,10 +53,10 @@
 
 #define BUTTON_SIZE 250.0f
 #define BUTTON_SPACING 2.0f
-#define BUTTON_MIN_COLUMNS 2
+#define BUTTON_MIN_COLUMNS 3
 #define BUTTON_MAX_COLUMNS 5
 
-#define THUMBNAIL_QUALITY_FACTOR 0.1f
+#define THUMBNAIL_QUALITY_FACTOR 0.05f
 #define QUALITY_BADGE_FONT_SIZE 48.0f
 
 #if !__has_include(<AppKit/NSGlassEffectView.h>)
@@ -249,7 +249,7 @@ NSString *getFolderPath(void) {
 
         void (^processNext)(void) = ^{
           if (index >= [displaysCopy count]) {
-            NSLog(@"✅ All displays randomized");
+            NSLog(@"All displays randomized");
             [videosCopy release];
             return;
           }
@@ -275,8 +275,8 @@ NSString *getFolderPath(void) {
             return;
           }
 
-          NSLog(@"🎲 Screen %lu: %@ → %@", [screenID unsignedLongValue],
-                videoName, imageName);
+          NSLog(@"Screen %lu: %@ → %@", [screenID unsignedLongValue], videoName,
+                imageName);
 
           strongSelf->_selectedDisplays.clear();
           strongSelf->_selectedDisplays.push_back([screenID unsignedLongValue]);
@@ -698,14 +698,11 @@ CGImageRef CompressImageWithQuality(CGImageRef image, float qualityFactor) {
       [NSBitmapImageRep imageRepWithData:compressedData];
   return [compressedRep CGImage];
 }
-
-// Modified generateThumbnailsForFolder method
 - (void)generateThumbnailsForFolder:(NSString *)folderPath {
   if (_generatingThumbImages) {
     return;
-  } else {
-    _generatingThumbImages = true;
   }
+  _generatingThumbImages = true;
   NSLog(@"Generating Thumbnails...");
 
   NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -722,243 +719,215 @@ CGImageRef CompressImageWithQuality(CGImageRef image, float qualityFactor) {
                                                                 error:nil];
   if (files.count == 0) {
     NSLog(@"No files found in folder: %@", folderPath);
+    _generatingThumbImages = false;
     return;
   }
 
-  dispatch_queue_t thumbnailQueue = dispatch_queue_create(
-      "com.app.thumbnailQueue", DISPATCH_QUEUE_CONCURRENT);
+  // Use serial queue instead of concurrent to limit memory usage
+  dispatch_queue_t thumbnailQueue =
+      dispatch_queue_create("com.app.thumbnailQueue", DISPATCH_QUEUE_SERIAL);
 
-  static dispatch_semaphore_t thumbnailSemaphore;
-  if (!thumbnailSemaphore)
-    thumbnailSemaphore = dispatch_semaphore_create(2);
+  __block NSInteger completedCount = 0;
+  NSInteger totalCount = 0;
 
   for (NSString *filename in files) {
     if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
         ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
       continue;
     }
+    totalCount++;
 
-    dispatch_async(
-        thumbnailQueue, ^{
-          dispatch_semaphore_wait(thumbnailSemaphore, DISPATCH_TIME_FOREVER);
+    dispatch_async(thumbnailQueue, ^{
+      @autoreleasepool {
+        NSString *filePath =
+            [folderPath stringByAppendingPathComponent:filename];
+        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
 
-          @autoreleasepool {
-            NSString *filePath =
-                [folderPath stringByAppendingPathComponent:filename];
-            NSURL *videoURL = [NSURL fileURLWithPath:filePath];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
+          NSLog(@"Video not found: %@", filePath);
+          completedCount++;
+          [self checkThumbnailGenerationComplete:completedCount
+                                      totalCount:totalCount];
+          return;
+        }
 
-            if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
-              NSLog(@"Video not found: %@", filePath);
-              dispatch_semaphore_signal(thumbnailSemaphore);
-              return;
-            }
+        AVAsset *asset = [AVAsset assetWithURL:videoURL];
 
-            AVAsset *asset = [AVAsset assetWithURL:videoURL];
+        [asset
+            loadValuesAsynchronouslyForKeys:@[ @"tracks", @"duration" ]
+                          completionHandler:^{
+                            @autoreleasepool {
+                              AVKeyValueStatus tracksStatus =
+                                  [asset statusOfValueForKey:@"tracks"
+                                                       error:nil];
+                              AVKeyValueStatus durationStatus =
+                                  [asset statusOfValueForKey:@"duration"
+                                                       error:nil];
 
-            [asset loadValuesAsynchronouslyForKeys:@[ @"tracks", @"duration" ]
-                                 completionHandler:^{
-                                   AVKeyValueStatus tracksStatus =
-                                       [asset statusOfValueForKey:@"tracks"
-                                                            error:nil];
-                                   AVKeyValueStatus durationStatus =
-                                       [asset statusOfValueForKey:@"duration"
-                                                            error:nil];
+                              if (tracksStatus != AVKeyValueStatusLoaded ||
+                                  durationStatus != AVKeyValueStatusLoaded) {
+                                NSLog(@"Failed to load asset metadata for %@",
+                                      filename);
+                                completedCount++;
+                                [self checkThumbnailGenerationComplete:
+                                          completedCount
+                                                            totalCount:
+                                                                totalCount];
+                                return;
+                              }
 
-                                   if (tracksStatus != AVKeyValueStatusLoaded ||
-                                       durationStatus !=
-                                           AVKeyValueStatusLoaded) {
-                                     NSLog(@"Failed to load asset metadata for "
-                                           @"%@",
-                                           filename);
-                                     dispatch_semaphore_signal(
-                                         thumbnailSemaphore);
-                                     return;
-                                   }
+                              CMTime duration = asset.duration;
+                              if (CMTIME_IS_INVALID(duration) ||
+                                  CMTIME_IS_INDEFINITE(duration) ||
+                                  CMTimeGetSeconds(duration) <= 0.0) {
+                                NSLog(@"Invalid/indefinite duration for %@",
+                                      filename);
+                                completedCount++;
+                                [self checkThumbnailGenerationComplete:
+                                          completedCount
+                                                            totalCount:
+                                                                totalCount];
+                                return;
+                              }
 
-                                   CMTime duration = asset.duration;
-                                   if (CMTIME_IS_INVALID(duration) ||
-                                       CMTIME_IS_INDEFINITE(duration) ||
-                                       CMTimeGetSeconds(duration) <= 0.0) {
-                                     NSLog(
-                                         @"Invalid/indefinite duration for %@",
-                                         filename);
-                                     dispatch_semaphore_signal(
-                                         thumbnailSemaphore);
-                                     return;
-                                   }
+                              AVAssetImageGenerator *generator =
+                                  [[AVAssetImageGenerator alloc]
+                                      initWithAsset:asset];
+                              generator.appliesPreferredTrackTransform = YES;
 
-                                   AVAssetImageGenerator *generator =
-                                       [[AVAssetImageGenerator alloc]
-                                           initWithAsset:asset];
-                                   generator.appliesPreferredTrackTransform =
-                                       YES;
+                              NSArray<AVAssetTrack *> *videoTracks =
+                                  [asset tracksWithMediaType:AVMediaTypeVideo];
+                              CGSize generatorSize = CGSizeMake(640, 360);
 
-                                   NSArray<AVAssetTrack *> *videoTracks = [asset
-                                       tracksWithMediaType:AVMediaTypeVideo];
-                                   CGSize generatorSize =
-                                       CGSizeMake(640, 360); // 16:9 ratio
+                              if (videoTracks.count > 0) {
+                                AVAssetTrack *track = videoTracks.firstObject;
+                                CGSize videoSize = track.naturalSize;
+                                CGAffineTransform t = track.preferredTransform;
+                                CGSize renderSize =
+                                    CGSizeApplyAffineTransform(videoSize, t);
+                                renderSize.width = fabs(renderSize.width);
+                                renderSize.height = fabs(renderSize.height);
 
-                                   if (videoTracks.count > 0) {
-                                     AVAssetTrack *track =
-                                         videoTracks.firstObject;
-                                     CGSize videoSize = track.naturalSize;
-                                     CGAffineTransform t =
-                                         track.preferredTransform;
-                                     CGSize renderSize =
-                                         CGSizeApplyAffineTransform(videoSize,
-                                                                    t);
-                                     renderSize.width = fabs(renderSize.width);
-                                     renderSize.height =
-                                         fabs(renderSize.height);
+                                CGFloat aspectRatio =
+                                    renderSize.width / renderSize.height;
+                                if (aspectRatio > (16.0f / 9.0f)) {
+                                  generatorSize.width = 640;
+                                  generatorSize.height = 640 / aspectRatio;
+                                } else {
+                                  generatorSize.height = 360;
+                                  generatorSize.width = 360 * aspectRatio;
+                                }
+                              }
 
-                                     // Maintain 16:9 aspect ratio
-                                     CGFloat aspectRatio =
-                                         renderSize.width / renderSize.height;
-                                     if (aspectRatio > (16.0f / 9.0f)) {
-                                       generatorSize.width = 640;
-                                       generatorSize.height = 640 / aspectRatio;
-                                     } else {
-                                       generatorSize.height = 360;
-                                       generatorSize.width = 360 * aspectRatio;
-                                     }
-                                   }
+                              generator.maximumSize = generatorSize;
 
-                                   generator.maximumSize = generatorSize;
+                              Float64 midpointSec =
+                                  CMTimeGetSeconds(duration) / 2.0;
+                              CMTime midpoint = CMTimeMakeWithSeconds(
+                                  midpointSec, duration.timescale);
 
-                                   Float64 midpointSec =
-                                       CMTimeGetSeconds(duration) / 2.0;
-                                   CMTime midpoint = CMTimeMakeWithSeconds(
-                                       midpointSec, duration.timescale);
-                                   NSValue *timeValue =
-                                       [NSValue valueWithCMTime:midpoint];
+                              [generator
+                                  generateCGImagesAsynchronouslyForTimes:@[
+                                    [NSValue valueWithCMTime:midpoint]
+                                  ]
+                                                       completionHandler:^(
+                                                           CMTime requestedTime,
+                                                           CGImageRef image,
+                                                           CMTime actualTime,
+                                                           AVAssetImageGeneratorResult
+                                                               result,
+                                                           NSError *genError) {
+                                                         @autoreleasepool {
+                                                           if (result ==
+                                                                   AVAssetImageGeneratorSucceeded &&
+                                                               image != NULL) {
+                                                             [self
+                                                                 saveThumbnailImage:
+                                                                     image
+                                                                           filename:
+                                                                               filename
+                                                                           videoURL:
+                                                                               videoURL];
+                                                           } else {
+                                                             NSLog(
+                                                                 @"generateCGIm"
+                                                                 @"ages failed "
+                                                                 @"for %@: %@",
+                                                                 filename,
+                                                                 genError);
+                                                           }
 
-                                   [generator generateCGImagesAsynchronouslyForTimes:
-                                                  @[ timeValue ]
-                                                                   completionHandler:
-                                                                       ^(CMTime
-                                                                             requestedTime,
-                                                                         CGImageRef
-                                                                             image,
-                                                                         CMTime actualTime, AVAssetImageGeneratorResult result, NSError *genError) {
-                                                                         if (result ==
-                                                                                 AVAssetImageGeneratorSucceeded &&
-                                                                             image !=
-                                                                                 NULL) {
+                                                           completedCount++;
+                                                           [self
+                                                               checkThumbnailGenerationComplete:
+                                                                   completedCount
+                                                                                     totalCount:
+                                                                                         totalCount];
+                                                         }
+                                                       }];
+                            }
+                          }];
+      }
+    });
+  }
 
-                                                                           CGImageRef retained =
-                                                                               CGImageRetain(
-                                                                                   image);
+  if (totalCount == 0) {
+    _generatingThumbImages = false;
+  }
+}
 
-                                                                           NSString *qualityBadge =
-                                                                               [self
-                                                                                   videoQualityBadgeForURL:
-                                                                                       videoURL];
+- (void)saveThumbnailImage:(CGImageRef)image
+                  filename:(NSString *)filename
+                  videoURL:(NSURL *)videoURL {
+  NSImage *thumbNSImage = [[NSImage alloc] initWithCGImage:image
+                                                      size:NSZeroSize];
 
-                                                                           NSImage *thumbNSImage =
-                                                                               [[NSImage
-                                                                                   alloc]
-                                                                                   initWithCGImage:
-                                                                                       retained
-                                                                                              size:
-                                                                                                  NSZeroSize];
+  NSString *qualityBadge = [self videoQualityBadgeForURL:videoURL];
+  if (qualityBadge && qualityBadge.length > 0) {
+    thumbNSImage = [self image:thumbNSImage withBadge:qualityBadge];
+  }
 
-                                                                           if (qualityBadge &&
-                                                                               qualityBadge
-                                                                                       .length >
-                                                                                   0) {
-                                                                             thumbNSImage = [self
-                                                                                     image:
-                                                                                         thumbNSImage
-                                                                                 withBadge:
-                                                                                     qualityBadge];
-                                                                           }
+  CGImageRef finalImage = [thumbNSImage CGImageForProposedRect:NULL
+                                                       context:NULL
+                                                         hints:NULL];
 
-                                                                           CGImageRef finalImage = [thumbNSImage
-                                                                               CGImageForProposedRect:
-                                                                                   NULL
-                                                                                              context:
-                                                                                                  NULL
-                                                                                                hints:
-                                                                                                    NULL];
+  NSString *thumbName = [[filename stringByDeletingPathExtension]
+      stringByAppendingPathExtension:@"png"];
+  NSString *thumbPath =
+      [[self thumbnailCachePath] stringByAppendingPathComponent:thumbName];
+  NSURL *thumbURL = [NSURL fileURLWithPath:thumbPath];
 
-                                                                           NSString *thumbName =
-                                                                               [[filename
-                                                                                   stringByDeletingPathExtension]
-                                                                                   stringByAppendingPathExtension:
-                                                                                       @"png"];
-                                                                           NSString *thumbPath =
-                                                                               [[self
-                                                                                   thumbnailCachePath]
-                                                                                   stringByAppendingPathComponent:
-                                                                                       thumbName];
-                                                                           NSURL *thumbURL =
-                                                                               [NSURL
-                                                                                   fileURLWithPath:
-                                                                                       thumbPath];
+  CGImageDestinationRef destination = CGImageDestinationCreateWithURL(
+      (__bridge CFURLRef)thumbURL, (__bridge CFStringRef)UTTypePNG.identifier,
+      1, NULL);
 
-                                                                           CGImageDestinationRef destination = CGImageDestinationCreateWithURL(
-                                                                               (__bridge CFURLRef)
-                                                                                   thumbURL,
-                                                                               (__bridge CFStringRef)
-                                                                                   UTTypePNG
-                                                                                       .identifier,
-                                                                               1,
-                                                                               NULL);
-                                                                           if (destination) {
-                                                                             // Add image with quality compression
-                                                                             NSDictionary *options = @{
-                                                                               (__bridge id)
-                                                                               kCGImageDestinationLossyCompressionQuality :
-                                                                                   @(THUMBNAIL_QUALITY_FACTOR)
-                                                                             };
-                                                                             CGImageDestinationAddImage(
-                                                                                 destination,
-                                                                                 finalImage,
-                                                                                 (__bridge CFDictionaryRef)
-                                                                                     options);
-                                                                             if (CGImageDestinationFinalize(
-                                                                                     destination)) {
-                                                                               NSLog(
-                                                                                   @"Saved PNG thumbnail: %@ (Quality: %.0f%%)",
-                                                                                   thumbName,
-                                                                                   THUMBNAIL_QUALITY_FACTOR *
-                                                                                       100);
-                                                                               dispatch_async(
-                                                                                   dispatch_get_main_queue(),
-                                                                                   ^{
-                                                                                     NSString *msg = [NSString
-                                                                                         stringWithFormat:
-                                                                                             @"Generated Thumbnail %@",
-                                                                                             thumbName];
-                                                                                     loadingMessage(
-                                                                                         msg);
-                                                                                   });
-                                                                             } else {
-                                                                               NSLog(
-                                                                                   @"Failed to finalize PNG for %@",
-                                                                                   thumbName);
-                                                                             }
-                                                                             CFRelease(
-                                                                                 destination);
-                                                                           }
+  if (destination) {
+    NSDictionary *options = @{
+      (__bridge id)
+      kCGImageDestinationLossyCompressionQuality : @(THUMBNAIL_QUALITY_FACTOR)
+    };
+    CGImageDestinationAddImage(destination, finalImage,
+                               (__bridge CFDictionaryRef)options);
+    if (CGImageDestinationFinalize(destination)) {
+      NSLog(@"Saved PNG thumbnail: %@ (Quality: %.0f%%)", thumbName,
+            THUMBNAIL_QUALITY_FACTOR * 100);
+      dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *msg =
+            [NSString stringWithFormat:@"Generated Thumbnail %@", thumbName];
+        loadingMessage(msg);
+      });
+    } else {
+      NSLog(@"Failed to finalize PNG for %@", thumbName);
+    }
+    CFRelease(destination);
+  }
+}
 
-                                                                           CGImageRelease(
-                                                                               retained);
-                                                                         } else {
-                                                                           NSLog(
-                                                                               @"generateCGImages failed for %@: %@",
-                                                                               filename,
-                                                                               genError);
-                                                                         }
-
-                                                                         dispatch_semaphore_signal(
-                                                                             thumbnailSemaphore);
-                                                                         _generatingThumbImages =
-                                                                             false;
-                                                                       }];
-                                 }];
-          }
-        });
+- (void)checkThumbnailGenerationComplete:(NSInteger)completedCount
+                              totalCount:(NSInteger)totalCount {
+  if (completedCount >= totalCount) {
+    _generatingThumbImages = false;
+    NSLog(@"Thumbnail generation complete!");
   }
 }
 - (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL {
@@ -1125,20 +1094,23 @@ NSTextField *CreateLabel(NSString *string) {
 
   // Add glass background
   NSView *glassView = nil;
+#if SUPPORTS_GLASS_EFFECT_VIEW
   if (@available(macOS 26.0, *)) {
     NSGlassEffectView *effView = [[NSGlassEffectView alloc]
         initWithFrame:self.settingsWindow.contentView.bounds];
     effView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     glassView = effView;
-  } else {
-    NSVisualEffectView *fallbackView = [[NSVisualEffectView alloc]
-        initWithFrame:self.settingsWindow.contentView.bounds];
-    fallbackView.material = NSVisualEffectMaterialHUDWindow;
-    fallbackView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    fallbackView.state = NSVisualEffectStateActive;
-    fallbackView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    glassView = fallbackView;
   }
+#else
+  NSVisualEffectView *fallbackView = [[NSVisualEffectView alloc]
+      initWithFrame:self.settingsWindow.contentView.bounds];
+  fallbackView.material = NSVisualEffectMaterialHUDWindow;
+  fallbackView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  fallbackView.state = NSVisualEffectStateActive;
+  fallbackView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  glassView = fallbackView;
+#endif
+
   [self.settingsWindow.contentView addSubview:glassView
                                    positioned:NSWindowBelow
                                    relativeTo:nil];
@@ -2383,23 +2355,24 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   self.blurWindow.minSize = NSMakeSize(600, 250);
 
   NSView *effectView = nil;
-
+#if SUPPORTS_GLASS_EFFECT_VIEW
   if (@available(macOS 26.0, *)) {
     NSGlassEffectView *blurView = [[NSGlassEffectView alloc]
         initWithFrame:[[self.blurWindow contentView] bounds]];
     [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [blurView setWantsLayer:YES];
     effectView = blurView;
-  } else {
-    NSVisualEffectView *blurView = [[NSVisualEffectView alloc]
-        initWithFrame:[[self.blurWindow contentView] bounds]];
-    blurView.material = NSVisualEffectMaterialHUDWindow;
-    blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    blurView.state = NSVisualEffectStateActive;
-    [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
-    [blurView setWantsLayer:YES];
-    effectView = blurView;
   }
+#else
+  NSVisualEffectView *blurView = [[NSVisualEffectView alloc]
+      initWithFrame:[[self.blurWindow contentView] bounds]];
+  blurView.material = NSVisualEffectMaterialHUDWindow;
+  blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  blurView.state = NSVisualEffectStateActive;
+  [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
+  [blurView setWantsLayer:YES];
+  effectView = blurView;
+#endif
 
   [[self.blurWindow contentView] addSubview:effectView
                                  positioned:NSWindowBelow
@@ -2510,6 +2483,7 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
 }
+
 - (void)setupCollectionViewInStack:(NSStackView *)mainStack {
   NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
   scrollView.hasVerticalScroller = YES;
@@ -2522,6 +2496,8 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   self.flowLayout.minimumInteritemSpacing = BUTTON_SPACING;
   self.flowLayout.minimumLineSpacing = BUTTON_SPACING;
   self.flowLayout.sectionInset = NSEdgeInsetsMake(12, 24, 12, 24);
+
+  self.flowLayout.scrollDirection = NSCollectionViewScrollDirectionVertical;
 
   self.flowLayout.itemSize = NSMakeSize(BUTTON_SIZE, BUTTON_SIZE * 0.5625f);
   self.flowLayout.estimatedItemSize = NSZeroSize;
@@ -2543,7 +2519,7 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 }
 
 - (void)setMaxWindowWidth {
-  CGFloat horizontalInset = 24 + 24; // left + right sectionInset
+  CGFloat horizontalInset = 24 + 24;
   CGFloat totalButtonWidth = BUTTON_SIZE * BUTTON_MAX_COLUMNS;
   CGFloat totalSpacing = BUTTON_SPACING * (BUTTON_MAX_COLUMNS - 1);
   CGFloat scrollbarWidth = 15;
@@ -2573,7 +2549,6 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 
     NSButton *btn = buttons[idx];
 
-    // Clean old subviews (important)
     [item.view.subviews
         makeObjectsPerformSelector:@selector(removeFromSuperview)];
 
@@ -2611,21 +2586,24 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 
   // Background blur / liquid glass
   NSView *effectView;
+#if SUPPORTS_GLASS_EFFECT_VIEW
   if (@available(macOS 26.0, *)) {
     NSGlassEffectView *blurView =
         [[NSGlassEffectView alloc] initWithFrame:NSZeroRect];
     blurView.translatesAutoresizingMaskIntoConstraints = NO;
     blurView.style = NSGlassEffectViewStyleClear;
     effectView = blurView;
-  } else {
-    NSVisualEffectView *blurView =
-        [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
-    blurView.material = NSVisualEffectMaterialHUDWindow;
-    blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    blurView.state = NSVisualEffectStateActive;
-    blurView.translatesAutoresizingMaskIntoConstraints = NO;
-    effectView = blurView;
   }
+#else
+  NSVisualEffectView *blurView =
+      [[NSVisualEffectView alloc] initWithFrame:NSZeroRect];
+  blurView.material = NSVisualEffectMaterialHUDWindow;
+  blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+  blurView.state = NSVisualEffectStateActive;
+  blurView.translatesAutoresizingMaskIntoConstraints = NO;
+  effectView = blurView;
+#endif
+
   [dockView addSubview:effectView positioned:NSWindowBelow relativeTo:nil];
   [NSLayoutConstraint activateConstraints:@[
     [effectView.topAnchor constraintEqualToAnchor:dockView.topAnchor],
@@ -2983,34 +2961,6 @@ void SaveDisplayConfig() { SaveSystem::Save(displays); }
       }
     }
   }
-}
-
-- (void)windowDidLoad {
-  [super windowDidLoad];
-
-  NSString *windowFrameKey = @"LiveWallpaperWindowFrame";
-  NSString *savedFrame =
-      [[NSUserDefaults standardUserDefaults] stringForKey:windowFrameKey];
-
-  if (savedFrame) {
-    [self.blurWindow setFrameFromString:savedFrame];
-  }
-
-  [self.blurWindow setFrameAutosaveName:windowFrameKey];
-}
-
-- (void)windowDidMove:(NSNotification *)notification {
-  NSString *windowFrameKey = @"LiveWallpaperWindowFrame";
-  [[NSUserDefaults standardUserDefaults]
-      setObject:[self.blurWindow stringWithSavedFrame]
-         forKey:windowFrameKey];
-}
-
-- (void)windowDidResize:(NSNotification *)notification {
-  NSString *windowFrameKey = @"LiveWallpaperWindowFrame";
-  [[NSUserDefaults standardUserDefaults]
-      setObject:[self.blurWindow stringWithSavedFrame]
-         forKey:windowFrameKey];
 }
 
 @end
