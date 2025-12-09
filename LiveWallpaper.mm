@@ -18,6 +18,8 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <AppKit/AppKit.h>
+#import <AppKit/NSCollectionView.h>
+#import <AppKit/NSCollectionViewFlowLayout.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>
@@ -26,6 +28,7 @@
 #import <ServiceManagement/SMAppService.h>
 #import <ServiceManagement/ServiceManagement.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+
 #include <list>
 
 #import <CoreGraphics/CoreGraphics.h>
@@ -47,6 +50,11 @@
 #include <spawn.h>
 #include <stdexcept>
 #include <string>
+
+#define BUTTON_SIZE 250.0f
+#define BUTTON_SPACING 2.0f
+#define BUTTON_MIN_COLUMNS 2
+#define BUTTON_MAX_COLUMNS 8
 
 #if !__has_include(<AppKit/NSGlassEffectView.h>)
 @class NSVisualEffectView;
@@ -120,7 +128,8 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 }
 
 @interface AppDelegate
-    : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTouchBarDelegate>
+    : NSObject <NSApplicationDelegate, NSWindowDelegate, NSTouchBarDelegate,
+                NSCollectionViewDataSource, NSCollectionViewDelegateFlowLayout>
 //@property(strong) NSWindow *window;
 @property(nonatomic, strong) NSMutableArray *notificationObservers;
 
@@ -148,13 +157,15 @@ NSImage *GetSystemAppIcon(NSString *appName, NSSize size) {
 @property(assign) Boolean generatingImages;
 @property(assign) Boolean generatingThumbImages;
 
+@property(strong) NSCollectionView *collectionView;
+@property(strong) NSCollectionViewFlowLayout *flowLayout;
+
 @end
 
 @implementation AppDelegate
 
-NSStackView *gridContainer = [[NSStackView alloc] init];
 NSScreen *mainScreen = NULL;
-NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
+NSMutableArray *buttons = [NSMutableArray array];
 NSView *content;
 NSString *folderPath;
 std::list<pid_t> all_deamon_created{};
@@ -1127,7 +1138,8 @@ NSString *getFolderPath(void) {
 
           dispatch_async(dispatch_get_main_queue(), ^{
             // Main thread: UI update only
-            [self reloadGrid:nil];
+            // reloadGrid
+            [self ReloadContent];
             NSLog(@"UI refreshed: %@", path);
             endLoading();
           });
@@ -1931,11 +1943,6 @@ NSTextField *CreateLabel(NSString *string) {
   }
   [buttons removeAllObjects];
 
-  for (NSView *subview in gridContainer.arrangedSubviews) {
-    [gridContainer removeArrangedSubview:subview];
-    [subview removeFromSuperview];
-  }
-
   checkFolderPath();
   NSArray<NSString *> *allFiles =
       [[NSFileManager defaultManager] contentsOfDirectoryAtPath:folderPath
@@ -1953,7 +1960,9 @@ NSTextField *CreateLabel(NSString *string) {
           [folderPath stringByAppendingPathComponent:filename];
       NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
 
-      NSButton *btn = [[NSButton alloc] init];
+      NSButton *btn = [[NSButton alloc]
+          initWithFrame:NSMakeRect(0, 0, BUTTON_SIZE,
+                                   BUTTON_SIZE * 9.0f / 16.0f)];
 
       NSString *cacheImagePath = [[self thumbnailCachePath]
           stringByAppendingPathComponent:
@@ -1970,105 +1979,31 @@ NSTextField *CreateLabel(NSString *string) {
         }
       }
 
-      btn.layer.cornerRadius = 10;
+      // Button styling - consolidated
+      btn.layer.cornerRadius = 10.0f;
       btn.layer.masksToBounds = YES;
-
-      btn.image = image;
       btn.bezelStyle = NSBezelStyleShadowlessSquare;
-      btn.imageScaling = NSImageScaleProportionallyUpOrDown;
+      btn.imageScaling = NSImageScaleAxesIndependently;
+      btn.imagePosition = NSImageOnly;
       btn.title = @"";
       btn.target = self;
       btn.action = @selector(handleButtonClick:);
       btn.toolTip = filename;
-
-      // btn.title = filename;
-      btn.bezelStyle = NSBezelStyleShadowlessSquare;
-      btn.imageScaling = NSImageScaleAxesIndependently;
-      btn.translatesAutoresizingMaskIntoConstraints = NO;
+      btn.translatesAutoresizingMaskIntoConstraints = YES;
       btn.tag = [videoFiles indexOfObject:filename];
+
+      [btn.image setSize:btn.bounds.size];
+
       [buttons addObject:btn];
     }
   }
+
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self.collectionView reloadData];
+  });
 }
 - (void)convertCodec:(id)sender {
   [self optimizeAllVideosInFolder];
-}
-
-- (void)reloadGrid:(id)sender {
-  NSString *cachePath = [self thumbnailCachePath];
-  NSArray *contents =
-      [[NSFileManager defaultManager] contentsOfDirectoryAtPath:cachePath
-                                                          error:nil];
-  if (contents.count == 0 && !_generatingThumbImages) {
-    checkFolderPath();
-    [self generateThumbnailsForFolder:getFolderPath()];
-  }
-  [self ReloadContent];
-
-  CGFloat spacing = 12.0;
-  CGFloat padding = 24.0;
-
-  CGFloat containerWidth = NSWidth(self.blurWindow.contentView.frame) - padding;
-  if (containerWidth < 0)
-    containerWidth = 0;
-
-  CGFloat minThumbWidth = 160.0;
-  NSUInteger columns = (NSUInteger)(containerWidth / (minThumbWidth + spacing));
-  if (columns < 1)
-    columns = 1;
-
-  CGFloat thumbWidth = (containerWidth - (columns - 1) * spacing) / columns;
-  CGFloat thumbHeight = thumbWidth * 9.0 / 16.0;
-
-  NSUInteger totalButtons = buttons.count;
-  NSUInteger rows = (totalButtons + columns - 1) / columns;
-
-  [NSAnimationContext
-      runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.25;
-
-        for (NSUInteger row = 0; row < rows; row++) {
-          NSStackView *rowStack = [[NSStackView alloc] init];
-          rowStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-          rowStack.spacing = spacing;
-          rowStack.distribution = NSStackViewDistributionFill;
-
-          for (NSUInteger col = 0; col < columns; col++) {
-            NSUInteger idx = row * columns + col;
-            if (idx < totalButtons) {
-              NSButton *btn = buttons[idx];
-
-              // Prepare for animation
-              btn.alphaValue = 0.0;
-              [btn setWantsLayer:YES];
-              btn.layer.transform = CATransform3DMakeScale(0.85, 0.85, 1);
-
-              [btn.widthAnchor constraintEqualToConstant:thumbWidth].active =
-                  YES;
-              [btn.heightAnchor constraintEqualToConstant:thumbHeight].active =
-                  YES;
-              [rowStack addArrangedSubview:btn];
-
-              // Animate after slight delay per item (optional staggered effect)
-              dispatch_after(
-                  dispatch_time(DISPATCH_TIME_NOW,
-                                (int64_t)(col * 0.03 * NSEC_PER_SEC)),
-                  dispatch_get_main_queue(), ^{
-                    [NSAnimationContext
-                        runAnimationGroup:^(NSAnimationContext *context) {
-                          context.duration = 0.3;
-                          btn.animator.alphaValue = 1.0;
-                          btn.layer.transform = CATransform3DIdentity;
-                        }
-                        completionHandler:nil];
-                  });
-            }
-          }
-
-          [gridContainer addArrangedSubview:rowStack];
-        }
-      }
-      completionHandler:nil];
 }
 
 void killAllDaemons() {
@@ -2252,7 +2187,9 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
 }
 
 - (NSSize)windowWillResize:(NSWindow *)sender toSize:(NSSize)proposedFrameSize {
-  
+
+  [self.collectionView reloadData];
+
   return proposedFrameSize;
 }
 
@@ -2335,11 +2272,11 @@ void launchDaemonOnScreen(NSString *videoPath, NSString *imagePath,
                     accessibilityDescription:@"Reload"];
       button = [NSButton buttonWithImage:reloadIcon
                                   target:self
-                                  action:@selector(reloadGrid:)];
+                                  action:@selector(ReloadContent)];
     } else {
       button = [NSButton buttonWithTitle:@"↻"
                                   target:self
-                                  action:@selector(reloadGrid:)];
+                                  action:@selector(ReloadContent)];
     }
     item.view = button;
     return item;
@@ -2431,8 +2368,6 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
-
-  // Add observer to Darwin notification center
   CFNotificationCenterAddObserver(
       CFNotificationCenterGetDarwinNotifyCenter(),
       (__bridge const void *)(self), generateStaticWallpapersForFolderCallback,
@@ -2453,7 +2388,6 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   }
   NSDictionary *options = @{(__bridge id)kAXTrustedCheckOptionPrompt : @YES};
 
-  // Display changes
   [[NSNotificationCenter defaultCenter]
       addObserver:self
          selector:@selector(screensDidChange:)
@@ -2496,31 +2430,25 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   if (@available(macOS 10.12.2, *)) {
     NSLog(@"Touchbar supported!");
     self.blurWindow.touchBar = [self makeTouchBar];
-
   } else {
     NSLog(@"Touchbar not supported!");
   }
   [self.blurWindow setOpaque:NO];
-
   [self.blurWindow setBackgroundColor:[NSColor clearColor]];
-
   self.blurWindow.minSize = NSMakeSize(600, 250);
 
   NSView *effectView = nil;
 
   if (@available(macOS 26.0, *)) {
-    // macOS 26+ uses NSGlassEffectView (Liquid Glass)
     NSGlassEffectView *blurView = [[NSGlassEffectView alloc]
         initWithFrame:[[self.blurWindow contentView] bounds]];
     [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [blurView setWantsLayer:YES];
     effectView = blurView;
   } else {
-    // fallback for macOS 15 and older
     NSVisualEffectView *blurView = [[NSVisualEffectView alloc]
         initWithFrame:[[self.blurWindow contentView] bounds]];
-    blurView.material =
-        NSVisualEffectMaterialHUDWindow; // or Menu, Sidebar etc.
+    blurView.material = NSVisualEffectMaterialHUDWindow;
     blurView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
     blurView.state = NSVisualEffectStateActive;
     [blurView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
@@ -2528,145 +2456,78 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
     effectView = blurView;
   }
 
-  // add the effect view below everything
   [[self.blurWindow contentView] addSubview:effectView
                                  positioned:NSWindowBelow
                                  relativeTo:nil];
 
-  // keep content reference
   NSView *content = [self.blurWindow contentView];
-
-  // clear layers
   content.layer.backgroundColor = [NSColor clearColor].CGColor;
   effectView.layer.backgroundColor = [NSColor clearColor].CGColor;
 
-  // window styling
-  self.blurWindow.titleVisibility =
-      NSWindowTitleVisible; // or NSWindowTitleHidden
+  self.blurWindow.titleVisibility = NSWindowTitleVisible;
   self.blurWindow.titlebarAppearsTransparent = YES;
   self.blurWindow.styleMask |= NSWindowStyleMaskFullSizeContentView;
 
+  NSView *contentContainer = [[NSView alloc] init];
+  contentContainer.translatesAutoresizingMaskIntoConstraints = NO;
+  [content addSubview:contentContainer];
+
+  [NSLayoutConstraint activateConstraints:@[
+    [contentContainer.topAnchor constraintEqualToAnchor:content.topAnchor
+                                               constant:12],
+    [contentContainer.leadingAnchor
+        constraintEqualToAnchor:content.leadingAnchor
+                       constant:12],
+    [contentContainer.trailingAnchor
+        constraintEqualToAnchor:content.trailingAnchor
+                       constant:-12],
+    [contentContainer.bottomAnchor constraintEqualToAnchor:content.bottomAnchor
+                                                  constant:-12]
+  ]];
+
   NSStackView *mainStack = [[NSStackView alloc] init];
   mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-  mainStack.distribution = NSStackViewDistributionFill;
-  mainStack.alignment = NSLayoutAttributeLeading;
   mainStack.spacing = 12;
+  mainStack.distribution = NSStackViewDistributionFillProportionally;
   mainStack.translatesAutoresizingMaskIntoConstraints = NO;
-  [mainStack
-      setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
-                               forOrientation:
-                                   NSLayoutConstraintOrientationVertical];
-  [mainStack setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                        forOrientation:NSLayoutConstraintOrientationVertical];
-
-[mainStack setContentCompressionResistancePriority:NSLayoutPriorityFittingSizeCompression 
-                                       forOrientation:NSLayoutConstraintOrientationVertical];
-[mainStack setContentHuggingPriority:NSLayoutPriorityDefaultLow 
-                           forOrientation:NSLayoutConstraintOrientationVertical];
-
-  [content addSubview:mainStack];
+  [contentContainer addSubview:mainStack];
 
   [NSLayoutConstraint activateConstraints:@[
-    [mainStack.topAnchor constraintEqualToAnchor:content.topAnchor constant:12],
-    [mainStack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor
-                                            constant:12],
-    [mainStack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor
-                                             constant:-12],
-    [mainStack.bottomAnchor constraintEqualToAnchor:content.bottomAnchor
-                                           constant:-12],
+    [mainStack.topAnchor constraintEqualToAnchor:contentContainer.topAnchor],
+    [mainStack.leadingAnchor
+        constraintEqualToAnchor:contentContainer.leadingAnchor],
+    [mainStack.trailingAnchor
+        constraintEqualToAnchor:contentContainer.trailingAnchor],
+    [mainStack.bottomAnchor
+        constraintEqualToAnchor:contentContainer.bottomAnchor]
   ]];
 
-  // Titlebar space
-  {
-    NSView *topSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
-    topSpacer.translatesAutoresizingMaskIntoConstraints = NO;
-    [topSpacer.heightAnchor constraintEqualToConstant:24].active =
-        YES; // desired gap
-    [mainStack addArrangedSubview:topSpacer];
+  NSView *topSpacer = [[NSView alloc] initWithFrame:NSZeroRect];
+  [topSpacer.heightAnchor constraintEqualToConstant:24].active = YES;
+  [mainStack addArrangedSubview:topSpacer];
+
+  LineModule *buttonPanel = [[LineModule alloc] initWithFrame:NSZeroRect];
+  NSButton *settingsButton =
+      CreateButton(@"⚙️", self, @selector(showSettingsWindow:));
+  NSButton *reloadButton =
+      [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
+  if (@available(macOS 11.0, *)) {
+    NSImage *reloadIcon = [NSImage imageWithSystemSymbolName:@"arrow.clockwise"
+                                    accessibilityDescription:@"Reload"];
+    [reloadButton setImage:reloadIcon];
+    [reloadButton setImagePosition:NSImageOnly];
+  } else {
+    [reloadButton setTitle:@"↻"];
   }
-  {
-    LineModule *buttonPanel = [[LineModule alloc] initWithFrame:NSZeroRect];
-    NSButton *settingsButton =
-        CreateButton(@"⚙️", self, @selector(showSettingsWindow:));
+  [reloadButton setBezelStyle:NSBezelStyleRounded];
+  [reloadButton setTarget:self];
+  [reloadButton setAction:@selector(ReloadContent)];
+  [buttonPanel add:reloadButton];
+  [buttonPanel add:settingsButton];
+  [mainStack addArrangedSubview:buttonPanel];
 
-    // Create reload button with proper system icon
-    NSButton *reloadButton =
-        [[NSButton alloc] initWithFrame:NSMakeRect(0, 0, 100, 30)];
-    if (@available(macOS 11.0, *)) {
-      NSImage *reloadIcon =
-          [NSImage imageWithSystemSymbolName:@"arrow.clockwise"
-                    accessibilityDescription:@"Reload"];
-      [reloadButton setImage:reloadIcon];
-      [reloadButton setImagePosition:NSImageOnly];
-    } else {
-      [reloadButton setTitle:@"↻"];
-    }
-    [reloadButton setBezelStyle:NSBezelStyleRounded];
-    [reloadButton setTarget:self];
-    [reloadButton setAction:@selector(reloadGrid:)];
-
-    [buttonPanel add:reloadButton];
-    [buttonPanel add:settingsButton];
-
-    [mainStack addArrangedSubview:buttonPanel];
-  }
-
-  gridContainer = [[NSStackView alloc] init];
-  gridContainer.orientation = NSUserInterfaceLayoutOrientationVertical;
-  gridContainer.spacing = 12;
-  gridContainer.edgeInsets = NSEdgeInsetsMake(12, 12, 12, 12);
-  gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
-  gridContainer.alignment =
-      NSLayoutAttributeCenterX; // Center the grid horizontally
-  [gridContainer setWantsLayer:YES];
-
-  NSScrollView *scrollView = [[NSScrollView alloc] init];
-
-  [mainStack addArrangedSubview:scrollView];
-
-  scrollView.translatesAutoresizingMaskIntoConstraints = NO;
-  scrollView.hasVerticalScroller = YES;
-  scrollView.hasHorizontalScroller = NO;
-  scrollView.borderType = NSNoBorder;
-  scrollView.documentView = gridContainer;
-  scrollView.drawsBackground = NO;
-
-  gridContainer.translatesAutoresizingMaskIntoConstraints = NO;
-  [NSLayoutConstraint activateConstraints:@[
-    [gridContainer.topAnchor
-        constraintEqualToAnchor:scrollView.contentView.topAnchor],
-    [gridContainer.centerXAnchor
-        constraintEqualToAnchor:scrollView.contentView.centerXAnchor],
-    [gridContainer.bottomAnchor
-        constraintEqualToAnchor:scrollView.contentView.bottomAnchor],
-  ]];
-
-
-  [scrollView
-      setContentCompressionResistancePriority:
-          NSLayoutPriorityFittingSizeCompression
-                               forOrientation:
-                                   NSLayoutConstraintOrientationVertical];
-  [scrollView setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                         forOrientation:NSLayoutConstraintOrientationVertical];
-
-
-  [gridContainer
-      setContentCompressionResistancePriority:
-          NSLayoutPriorityFittingSizeCompression
-                               forOrientation:
-                                   NSLayoutConstraintOrientationVertical];
-  [gridContainer
-      setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                 forOrientation:NSLayoutConstraintOrientationVertical];
-
-  [self reloadGrid:nil];
-
-
-
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [self reloadGrid:nil];
-  });
+  [self setupCollectionViewInStack:mainStack];
+  [self ReloadContent];
 
   [self setupFloatingDock];
   ScanDisplays();
@@ -2688,10 +2549,8 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
     NSImage *configuredIcon = [icon imageWithSymbolConfiguration:config];
 
     self.statusItem.button.image = configuredIcon;
-
     self.statusItem.button.contentTintColor = nil;
   } else {
-
     NSImage *icon = [NSImage imageNamed:NSImageNameApplicationIcon];
     self.statusItem.button.image = icon;
   }
@@ -2705,14 +2564,68 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
            keyEquivalent:@"s"];
   [menu addItemWithTitle:@"Quit" action:@selector(quitApp) keyEquivalent:@"q"];
   self.statusItem.menu = menu;
+}
 
-  // if (buttons.count > 0 &&
-  //     [[NSUserDefaults standardUserDefaults] boolForKey:@"random"] == TRUE) {
-  //   NSLog(@"Loading Random Wallpaper...");
-  //   NSUInteger randomIndex = arc4random_uniform((u_int32_t)buttons.count);
-  //   NSButton *randomButton = buttons[randomIndex];
-  //   [randomButton performClick:nil];
-  // }
+- (void)setupCollectionViewInStack:(NSStackView *)mainStack {
+  NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSZeroRect];
+  scrollView.hasVerticalScroller = YES;
+  scrollView.hasHorizontalScroller = NO;
+  scrollView.autohidesScrollers = YES;
+  scrollView.drawsBackground = NO;
+  scrollView.borderType = NSBorderType::NSNoBorder;
+
+  self.flowLayout = [[NSCollectionViewFlowLayout alloc] init];
+  self.flowLayout.minimumInteritemSpacing = BUTTON_SPACING;
+  self.flowLayout.minimumLineSpacing = BUTTON_SPACING;
+  self.flowLayout.sectionInset = NSEdgeInsetsMake(12, 24, 12, 24);
+
+  self.flowLayout.itemSize = NSMakeSize(BUTTON_SIZE, BUTTON_SIZE * 0.5625f);
+
+  self.flowLayout.estimatedItemSize = NSZeroSize;
+
+  self.collectionView = [[NSCollectionView alloc] initWithFrame:NSZeroRect];
+  self.collectionView.collectionViewLayout = self.flowLayout;
+  self.collectionView.dataSource = self;
+  self.collectionView.delegate = self;
+  self.collectionView.backgroundColors = @[ [NSColor clearColor] ];
+  self.collectionView.selectable = NO;
+
+  [self.collectionView registerClass:[NSCollectionViewItem class]
+               forItemWithIdentifier:@"VideoItem"];
+
+  scrollView.documentView = self.collectionView;
+  [mainStack addArrangedSubview:scrollView];
+}
+
+- (NSInteger)collectionView:(NSCollectionView *)collectionView
+     numberOfItemsInSection:(NSInteger)section {
+  return buttons.count;
+}
+
+- (NSCollectionViewItem *)collectionView:(NSCollectionView *)collectionView
+     itemForRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
+
+  NSCollectionViewItem *item =
+      [collectionView makeItemWithIdentifier:@"VideoItem"
+                                forIndexPath:indexPath];
+
+  NSUInteger idx = indexPath.item;
+
+  if (idx < buttons.count) {
+
+    NSButton *btn = buttons[idx];
+
+    // Clean old subviews (important)
+    [item.view.subviews
+        makeObjectsPerformSelector:@selector(removeFromSuperview)];
+
+    btn.frame = item.view.bounds;
+    btn.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+
+    [item.view addSubview:btn];
+  }
+
+  return item;
 }
 
 - (void)setupFloatingDock {
