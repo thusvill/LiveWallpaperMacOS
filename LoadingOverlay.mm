@@ -44,7 +44,7 @@
 
     // Spinner
     self.spinner = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(0, 0, 32, 32)];
-    self.spinner.style = NSProgressIndicatorSpinningStyle;
+    self.spinner.style = NSProgressIndicatorStyleSpinning;
     self.spinner.controlSize = NSControlSizeRegular;
     self.spinner.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.spinner];

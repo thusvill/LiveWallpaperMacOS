@@ -62,32 +62,31 @@ static inline NSString *displayNameForDisplayID(CGDirectDisplayID did) {
 
   CoreDisplayInfoFnType infoFn = GetCoreDisplayInfoFn();
   if (infoFn) {
-    CFDictionaryRef info = infoFn(did); 
+    CFDictionaryRef info = infoFn(did);
     if (info) {
-      
-      NSDictionary *dict = (__bridge_transfer NSDictionary *)info;
-      
+
+      NSDictionary *dict = (NSDictionary *)info;
+      [dict retain];
+
       id nameVal = dict[@"DisplayProductName"];
       if ([nameVal isKindOfClass:[NSString class]] &&
           ((NSString *)nameVal).length > 0)
         return (NSString *)nameVal;
       if ([nameVal isKindOfClass:[NSDictionary class]]) {
-      
+
         NSDictionary *localNames = (NSDictionary *)nameVal;
         NSString *en = localNames[@"en_US"] ?: localNames[@"en"] ?: nil;
         if (en.length > 0)
           return en;
-      
+
         for (id v in localNames.allValues) {
           if ([v isKindOfClass:[NSString class]] && ((NSString *)v).length > 0)
             return (NSString *)v;
         }
       }
-      
     }
   }
 
-  
   for (NSScreen *screen in NSScreen.screens) {
     NSDictionary *desc = screen.deviceDescription;
     NSNumber *num = desc[@"NSScreenNumber"];
@@ -101,7 +100,6 @@ static inline NSString *displayNameForDisplayID(CGDirectDisplayID did) {
     }
   }
 
-  
   return [NSString stringWithFormat:@"Display %u", did];
 }
 
@@ -149,19 +147,17 @@ inline bool KillProcessByPID(pid_t pid) {
     return false;
   }
 
-  
   kill(pid, SIGTERM);
 
-  
   for (int i = 0; i < 15; i++) {
     if (kill(pid, 0) != 0 && errno == ESRCH) {
 
       return true;
+      std::printf("Process killed: %d\n", pid);
     }
-    usleep(100000); // 0.1s
+    usleep(100000);
   }
 
-  
   kill(pid, SIGKILL);
 
   for (int i = 0; i < 10; i++) {
@@ -171,7 +167,7 @@ inline bool KillProcessByPID(pid_t pid) {
     }
     usleep(100000);
   }
-
+  printf("Process not killed");
   return false;
 }
 
@@ -213,7 +209,6 @@ static void ScanDisplays() {
   for (auto it = displays.begin(); it != displays.end();) {
     if (runtime.find(it->uuid) == runtime.end()) {
       KillProcessByPID(it->daemon);
-
       it = displays.erase(it);
     } else {
       ++it;

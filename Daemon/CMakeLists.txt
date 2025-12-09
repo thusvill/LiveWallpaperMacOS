@@ -13,6 +13,7 @@ target_link_libraries(wallpaperdaemon
     "-framework CoreMedia"
     "-framework UniformTypeIdentifiers"
      "-framework QuartzCore"
+     "-framework IOKit"
 )
 
 target_compile_options(wallpaperdaemon PRIVATE

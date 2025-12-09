@@ -46,6 +46,7 @@ target_link_libraries(LiveWallpaper
     "-framework ApplicationServices"
     "-framework ServiceManagement"
     "-framework IOKit"
+    "-framework UniformTypeIdentifiers"
 )
 
 add_subdirectory(Daemon)
