@@ -15,9 +15,9 @@ set_source_files_properties(${app_icon_macos} PROPERTIES MACOSX_PACKAGE_LOCATION
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_GREATER_EQUAL "15.0")
-    add_compile_definitions(MACOS26x=1)
+    add_compile_definitions(MACOS26=1)
 else()
-    add_compile_definitions(MACOS26x=0)
+    add_compile_definitions(MACOS26=0)
 endif()
 
 add_executable(LiveWallpaper MACOSX_BUNDLE ${app_icon_macos} LiveWallpaper.mm LineModule.m LineModule.h DisplayManager.h SaveSystem.h SaveSystem.mm LoadingOverlay.h LoadingOverlay.mm)

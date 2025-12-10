@@ -1094,7 +1094,7 @@ NSTextField *CreateLabel(NSString *string) {
 
   // Add glass background
   NSView *glassView = nil;
-#if SUPPORTS_GLASS_EFFECT_VIEW
+#if MACOS26
   if (@available(macOS 26.0, *)) {
     NSGlassEffectView *effView = [[NSGlassEffectView alloc]
         initWithFrame:self.settingsWindow.contentView.bounds];
@@ -2355,7 +2355,7 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
   self.blurWindow.minSize = NSMakeSize(600, 250);
 
   NSView *effectView = nil;
-#if SUPPORTS_GLASS_EFFECT_VIEW
+#if MACOS26
   if (@available(macOS 26.0, *)) {
     NSGlassEffectView *blurView = [[NSGlassEffectView alloc]
         initWithFrame:[[self.blurWindow contentView] bounds]];
@@ -2586,7 +2586,7 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 
   // Background blur / liquid glass
   NSView *effectView;
-#if SUPPORTS_GLASS_EFFECT_VIEW
+#if MACOS26
   if (@available(macOS 26.0, *)) {
     NSGlassEffectView *blurView =
         [[NSGlassEffectView alloc] initWithFrame:NSZeroRect];
