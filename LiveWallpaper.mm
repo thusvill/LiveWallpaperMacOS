@@ -2281,6 +2281,9 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
+  [[NSUserDefaults standardUserDefaults]
+      registerDefaults:@{ @"pauseOnAppFocus" : @YES }];
+
   CFNotificationCenterAddObserver(
       CFNotificationCenterGetDarwinNotifyCenter(),
       (__bridge const void *)(self), generateStaticWallpapersForFolderCallback,
