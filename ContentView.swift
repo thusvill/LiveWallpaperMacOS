@@ -16,6 +16,7 @@ import Combine
 struct ContentView: View {
     @StateObject private var viewModel = WallpaperViewModel()
     @State private var showSettings = false
+    @StateObject private var displayManager = DisplayManager()
     @State private var selectedDisplays: Set<UInt32> = []
 
     var body: some View {
@@ -43,9 +44,10 @@ struct ContentView: View {
 
                 
                 DisplayDockView(
-                    displays: viewModel.displays,
-                    selectedDisplays: $selectedDisplays
-                )
+                            displays: displayManager.displays,
+                            selectedDisplays: $selectedDisplays
+                        )
+                        
                 .padding(.bottom, 20)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -169,6 +171,50 @@ struct QualityBadge: View {
             )
     }
 }
+class DisplayManager: ObservableObject {
+    @Published var displays: [DisplayInfo] = []
+
+    init() {
+        updateDisplays()
+        CGDisplayRegisterReconfigurationCallback(displayReconfigCallback, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    deinit {
+        CGDisplayRemoveReconfigurationCallback(displayReconfigCallback, Unmanaged.passUnretained(self).toOpaque())
+    }
+
+    func updateDisplays() {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
+        var count: UInt32 = 0
+        CGGetActiveDisplayList(16, &ids, &count)
+
+        displays = (0..<Int(count)).map { i in
+            let id = ids[i]
+            let w = CGDisplayPixelsWide(id)
+            let h = CGDisplayPixelsHigh(id)
+            let name = NSScreen.screens.first { screen in
+                if let n = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
+                    return n.uint32Value == id
+                }
+                return false
+            }?.localizedName ?? "Display \(id)"
+            return DisplayInfo(id: id, name: name, resolution: "\(w)x\(h)")
+        }
+    }
+}
+
+private func displayReconfigCallback(
+    _ display: CGDirectDisplayID,
+    _ flags: UInt32,
+    _ userInfo: UnsafeMutableRawPointer?
+) {
+    guard let userInfo = userInfo else { return }
+    let manager = Unmanaged<DisplayManager>.fromOpaque(userInfo).takeUnretainedValue()
+    DispatchQueue.main.async {
+        manager.updateDisplays()
+    }
+}
+
 
 // MARK: - Display Dock View
 struct DisplayDockView: View {
@@ -199,6 +245,7 @@ struct DisplayDockView: View {
             .background(
                     Color.clear
             )
+            .animation(.easeOut(duration: 0.25), value: displays.count)
         
     }
 }
