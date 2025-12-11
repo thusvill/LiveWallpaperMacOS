@@ -65,8 +65,8 @@ static inline NSString *displayNameForDisplayID(CGDirectDisplayID did) {
     CFDictionaryRef info = infoFn(did);
     if (info) {
 
-      NSDictionary *dict = (NSDictionary *)info;
-      [dict retain];
+        NSDictionary *dict = (NSDictionary *)CFBridgingRelease(info);
+      
 
       id nameVal = dict[@"DisplayProductName"];
       if ([nameVal isKindOfClass:[NSString class]] &&
