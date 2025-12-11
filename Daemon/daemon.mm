@@ -367,7 +367,7 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   BOOL screenLocked = self.screen_locked || [self isScreenLocked];
   self.screen_locked = screenLocked;
 
-  BOOL wallpaperHidden = [self isWallpaperHiddenOnTargetDisplay];
+  BOOL wallpaperHidden = NO; //[self isWallpaperHiddenOnTargetDisplay]; TODO: FIx this function (not detecting windows correctly)
 
   BOOL shouldPause = screenLocked || wallpaperHidden;
 
