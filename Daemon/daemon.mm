@@ -25,6 +25,11 @@
 #include <Foundation/Foundation.h>
 #import <QuartzCore/QuartzCore.h>
 #include <cstdlib>
+#include <float.h>
+#include <cmath>
+#include <IOKit/pwr_mgt/IOPMLib.h>
+#include <IOKit/ps/IOPowerSources.h>
+#include <IOKit/ps/IOPSKeys.h>
 
 @interface VideoWallpaperDaemon : NSObject
 @property(strong) NSMutableArray<NSWindow *> *windows;
@@ -40,6 +45,13 @@
 @property(nonatomic, strong) NSString *framePath;
 @property(nonatomic, assign) NSScreen *targetScreen;
 @property(nonatomic, assign) AVAsset *asset;
+@property(nonatomic, assign) CGFloat targetPlaybackRate;
+@property(nonatomic, assign) BOOL reducedPerformanceMode;
+@property(nonatomic, assign) CGDirectDisplayID targetDisplayID;
+@property(nonatomic, assign) BOOL runningOnBattery;
+@property(nonatomic, assign) BOOL lowPowerModeEnabled;
+@property(nonatomic, assign) BOOL visibilityReductionActive;
+@property(nonatomic, assign) BOOL playbackPaused;
 
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath
@@ -60,12 +72,28 @@
     _players = [NSMutableArray array];
     _playerLayers = [NSMutableArray array];
     _loopers = [NSMutableArray array];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    if ([defaults objectForKey:@"pauseOnAppFocus"] == nil) {
+      [defaults setBool:YES forKey:@"pauseOnAppFocus"];
+      [defaults synchronize];
+    }
     _autoPauseEnabled =
-        [[NSUserDefaults standardUserDefaults] boolForKey:@"pauseOnAppFocus"];
+      [defaults boolForKey:@"pauseOnAppFocus"];
     _wasPlayingBeforeSleep = YES;
     _scalingMode = scalingMode ?: @"stretch";
     _framePath = framePath;
     _targetScreen = targetScreen;
+    _targetPlaybackRate = 1.0f;
+    _reducedPerformanceMode = NO;
+
+    NSNumber *screenNumber =
+      targetScreen.deviceDescription[@"NSScreenNumber"];
+    _targetDisplayID = screenNumber ? (CGDirectDisplayID)screenNumber.unsignedIntValue
+                    : kCGNullDirectDisplay;
+    _runningOnBattery = [self isRunningOnBatteryPower];
+    _lowPowerModeEnabled = [self currentLowPowerModeState];
+    _visibilityReductionActive = NO;
+    _playbackPaused = NO;
 
     // Observe screen lock/unlock
     NSDistributedNotificationCenter *center =
@@ -85,9 +113,32 @@
            selector:@selector(activeApplicationChanged:)
                name:NSWorkspaceDidActivateApplicationNotification
              object:nil];
+    [[[NSWorkspace sharedWorkspace] notificationCenter]
+      addObserver:self
+         selector:@selector(activeSpaceChanged:)
+           name:NSWorkspaceActiveSpaceDidChangeNotification
+         object:nil];
+
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(powerStateDidChange:)
+               name:NSProcessInfoPowerStateDidChangeNotification
+             object:nil];
+
+    self.checkTimer = [NSTimer timerWithTimeInterval:2.0
+                                              target:self
+                                            selector:@selector(checkAndUpdatePlaybackState)
+                                            userInfo:nil
+                                             repeats:YES];
+    self.checkTimer.tolerance = 0.5;
+    [[NSRunLoop mainRunLoop] addTimer:self.checkTimer
+                               forMode:NSRunLoopCommonModes];
 
     // Setup wallpaper with video
     [self setupWallpaperWithVideo:videoPath];
+
+    [self updatePerformanceMode];
+    [self checkAndUpdatePlaybackState];
   }
   return self;
 }
@@ -203,11 +254,13 @@
   // Resume if it was playing before sleep
   if (self.wasPlayingBeforeSleep) {
     NSLog(@"[Daemon] Resuming playback after screen unlock");
-    for (AVQueuePlayer *player in _players) {
-      [player play];
-    }
-    // Let the timer check if it should pause based on current app state
+    [self resumeAllPlayers];
   }
+
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)),
+                 dispatch_get_main_queue(), ^{
+                   [self checkAndUpdatePlaybackState];
+                 });
 }
 - (void)dealloc {
 
@@ -218,7 +271,11 @@
   [_windows removeAllObjects];
   [_players removeAllObjects];
   [_playerLayers removeAllObjects];
+  [self.checkTimer invalidate];
+  self.checkTimer = nil;
   [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [[NSDistributedNotificationCenter defaultCenter] removeObserver:self];
 }
 
 static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
@@ -307,15 +364,327 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
 // }
 
 - (void)checkAndUpdatePlaybackState {
-  if (!self.autoPauseEnabled) {
-    [self resumeAllPlayers];
-    return;
+  BOOL screenLocked = self.screen_locked || [self isScreenLocked];
+  self.screen_locked = screenLocked;
+
+  BOOL wallpaperHidden = NO; //[self isWallpaperHiddenOnTargetDisplay]; TODO: FIx this function (not detecting windows correctly)
+
+  BOOL shouldPause = screenLocked || wallpaperHidden;
+
+  if (!shouldPause && self.autoPauseEnabled) {
+    shouldPause = ![self isFrontmostAppAllowed];
   }
 
-  if ([self isScreenLocked] || ![self isFrontmostAppAllowed]) {
+  if (shouldPause) {
+    if (!self.playbackPaused) {
+      NSLog(@"[Daemon] Pausing because hidden=%@ locked=%@ autoPause=%@",
+            wallpaperHidden ? @"YES" : @"NO",
+            screenLocked ? @"YES" : @"NO",
+            self.autoPauseEnabled ? @"YES" : @"NO");
+    }
     [self pauseAllPlayers];
   } else {
+    if (self.playbackPaused) {
+      NSLog(@"[Daemon] Resuming because hidden=%@ locked=%@ autoPause=%@",
+            wallpaperHidden ? @"YES" : @"NO",
+            screenLocked ? @"YES" : @"NO",
+            self.autoPauseEnabled ? @"YES" : @"NO");
+    }
     [self resumeAllPlayers];
+  }
+
+  [self updatePerformanceModeConsideringVisibility:wallpaperHidden
+                                             paused:self.playbackPaused];
+}
+
+- (CGRect)targetDisplayBounds {
+  if (self.targetScreen)
+    return self.targetScreen.frame;
+
+  if (self.targetDisplayID != kCGNullDirectDisplay)
+    return CGDisplayBounds(self.targetDisplayID);
+
+  NSScreen *fallback = [NSScreen mainScreen];
+  return fallback ? fallback.frame : CGRectZero;
+}
+
+- (BOOL)isWallpaperHiddenOnTargetDisplay {
+  NSWindow *primaryWindow = _windows.firstObject;
+  if (primaryWindow && !primaryWindow.isOnActiveSpace) {
+    return YES;
+  }
+
+  if (primaryWindow) {
+    CGWindowID wallpaperWindowID = (CGWindowID)primaryWindow.windowNumber;
+    if (wallpaperWindowID != kCGNullWindowID) {
+      CFArrayRef aboveWindows = CGWindowListCopyWindowInfo(
+          kCGWindowListOptionOnScreenAboveWindow |
+              kCGWindowListExcludeDesktopElements,
+          wallpaperWindowID);
+      if (aboveWindows) {
+        CFIndex aboveCount = CFArrayGetCount(aboveWindows);
+        if (aboveCount > 0) {
+          CFDictionaryRef topWindow =
+              (CFDictionaryRef)CFArrayGetValueAtIndex(aboveWindows, 0);
+          NSDictionary *info = (__bridge NSDictionary *)topWindow;
+          NSString *owner = info[(NSString *)kCGWindowOwnerName] ?: @"<unknown>";
+          NSString *name = info[(NSString *)kCGWindowName] ?: @"<unnamed>";
+          NSLog(@"[Visibility] Windows above wallpaper detected. Top owner=%@ name=%@",
+                owner, name);
+          CFRelease(aboveWindows);
+          return YES;
+        }
+        CFRelease(aboveWindows);
+      }
+    }
+  }
+
+  CGRect targetFrame = [self targetDisplayBounds];
+  if (CGRectIsEmpty(targetFrame))
+    return NO;
+
+  CGFloat targetArea = fabs(targetFrame.size.width * targetFrame.size.height);
+  if (targetArea < FLT_EPSILON)
+    return NO;
+
+  CGWindowListOption options =
+      kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements;
+  CFArrayRef windows =
+      CGWindowListCopyWindowInfo(options, kCGNullWindowID);
+  if (!windows)
+    return NO;
+
+  BOOL hidden = NO;
+  pid_t selfPID = getpid();
+  CFIndex count = CFArrayGetCount(windows);
+  BOOL sawObscuringWindow = NO;
+
+  for (CFIndex i = 0; i < count; ++i) {
+    NSDictionary *window = (__bridge NSDictionary *)
+        CFArrayGetValueAtIndex(windows, i);
+
+    NSNumber *ownerPID = window[(NSString *)kCGWindowOwnerPID];
+    if (ownerPID && ownerPID.intValue == selfPID)
+      continue;
+
+    NSNumber *layerNumber = window[(NSString *)kCGWindowLayer];
+    if (layerNumber && layerNumber.integerValue > 0)
+      continue;
+
+    NSString *windowName = window[(NSString *)kCGWindowName];
+    NSString *ownerName = window[(NSString *)kCGWindowOwnerName];
+    if ([ownerName isEqualToString:@"Dock"] &&
+        [windowName isEqualToString:@"Desktop Picture"]) {
+      continue;
+    }
+
+    if ([ownerName isEqualToString:@"LiveWallpaper"] ||
+        [ownerName isEqualToString:@"wallpaperdaemon"]) {
+      continue;
+    }
+
+    NSDictionary *boundsDict = window[(NSString *)kCGWindowBounds];
+    if (!boundsDict)
+      continue;
+
+    CGRect windowBounds = CGRectZero;
+    if (!CGRectMakeWithDictionaryRepresentation(
+            (__bridge CFDictionaryRef)boundsDict, &windowBounds))
+      continue;
+
+    CGRect intersection = CGRectIntersection(windowBounds, targetFrame);
+    if (CGRectIsNull(intersection) || CGRectIsEmpty(intersection))
+      continue;
+
+    CGFloat coverage =
+        fabs(intersection.size.width * intersection.size.height) / targetArea;
+    CGFloat widthCoverage = fabs(intersection.size.width) /
+                            MAX(fabs(targetFrame.size.width), FLT_EPSILON);
+    CGFloat heightCoverage = fabs(intersection.size.height) /
+                             MAX(fabs(targetFrame.size.height), FLT_EPSILON);
+
+    NSNumber *alphaNumber = window[(NSString *)kCGWindowAlpha];
+    CGFloat alpha = alphaNumber ? alphaNumber.doubleValue : 1.0;
+
+    BOOL nearlyFullWidth = widthCoverage >= 0.95;
+    BOOL nearlyFullHeight = heightCoverage >= 0.90;
+    BOOL largeArea = coverage >= 0.80f;
+
+    if (coverage > 0.10f) {
+      NSLog(@"[Visibility] owner=%@ name=%@ coverage=%.2f width=%.2f height=%.2f alpha=%.2f",
+            ownerName ?: @"<unknown>", windowName ?: @"<unnamed>", coverage,
+            widthCoverage, heightCoverage, alpha);
+    }
+
+    if (alpha > 0.2f &&
+        (largeArea || (nearlyFullWidth && heightCoverage >= 0.75) ||
+         (coverage >= 0.60f && nearlyFullHeight))) {
+      sawObscuringWindow = YES;
+      hidden = YES;
+      NSLog(@"[Visibility] treating owner=%@ name=%@ as covering the wallpaper",
+            ownerName ?: @"<unknown>", windowName ?: @"<unnamed>");
+      break;
+    }
+  }
+
+  CFRelease(windows);
+  if (!hidden) {
+    NSLog(@"[Visibility] No covering windows detected (hidden=%@)",
+          hidden ? @"YES" : @"NO");
+  }
+  return hidden;
+}
+
+- (BOOL)isRunningOnBatteryPower {
+  CFTypeRef info = IOPSCopyPowerSourcesInfo();
+  if (!info)
+    return NO;
+
+  CFArrayRef sources = IOPSCopyPowerSourcesList(info);
+  if (!sources) {
+    CFRelease(info);
+    return NO;
+  }
+
+  BOOL onBattery = NO;
+  CFIndex count = CFArrayGetCount(sources);
+  static NSString *typeKey = nil;
+  static NSString *stateKey = nil;
+  static NSString *internalBattery = nil;
+  static NSString *batteryPower = nil;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    typeKey = [[NSString alloc] initWithUTF8String:kIOPSTypeKey];
+    stateKey =
+        [[NSString alloc] initWithUTF8String:kIOPSPowerSourceStateKey];
+    internalBattery =
+        [[NSString alloc] initWithUTF8String:kIOPSInternalBatteryType];
+    batteryPower =
+        [[NSString alloc] initWithUTF8String:kIOPSBatteryPowerValue];
+  });
+
+  for (CFIndex idx = 0; idx < count; ++idx) {
+    CFTypeRef source = CFArrayGetValueAtIndex(sources, idx);
+    CFDictionaryRef description =
+        IOPSGetPowerSourceDescription(info, source);
+    if (!description)
+      continue;
+
+    NSDictionary *details =
+        (__bridge NSDictionary *)description;
+    NSString *type = details[typeKey];
+    NSString *state = details[stateKey];
+
+    if (!type || !state)
+      continue;
+
+    if ([type isEqualToString:internalBattery] &&
+        [state isEqualToString:batteryPower]) {
+      onBattery = YES;
+      break;
+    }
+  }
+
+  CFRelease(sources);
+  CFRelease(info);
+  return onBattery;
+}
+
+- (BOOL)currentLowPowerModeState {
+  NSProcessInfo *processInfo = [NSProcessInfo processInfo];
+  if ([processInfo respondsToSelector:@selector(isLowPowerModeEnabled)]) {
+    return processInfo.isLowPowerModeEnabled;
+  }
+  return NO;
+}
+
+- (void)powerStateDidChange:(NSNotification *)notification {
+  self.runningOnBattery = [self isRunningOnBatteryPower];
+  self.lowPowerModeEnabled = [self currentLowPowerModeState];
+  [self checkAndUpdatePlaybackState];
+}
+
+- (void)updatePerformanceMode {
+  [self updatePerformanceModeConsideringVisibility:NO
+                                            paused:self.playbackPaused];
+}
+
+- (void)updatePerformanceModeConsideringVisibility:(BOOL)wallpaperHidden
+                                            paused:(BOOL)isPaused {
+  BOOL battery = [self isRunningOnBatteryPower];
+  BOOL lowPower = [self currentLowPowerModeState];
+  BOOL visibilityReduction = !isPaused && wallpaperHidden;
+
+  BOOL stateChanged = (battery != self.runningOnBattery) ||
+                      (lowPower != self.lowPowerModeEnabled) ||
+                      (visibilityReduction != self.visibilityReductionActive);
+
+  self.runningOnBattery = battery;
+  self.lowPowerModeEnabled = lowPower;
+  self.visibilityReductionActive = visibilityReduction;
+
+  BOOL reduce = battery || lowPower || visibilityReduction;
+
+  if (reduce != self.reducedPerformanceMode || stateChanged) {
+    self.reducedPerformanceMode = reduce;
+    NSLog(@"[Daemon] %@ performance mode (battery=%@, lowPower=%@, hidden=%@)",
+          reduce ? @"Entering" : @"Leaving",
+          battery ? @"YES" : @"NO",
+          lowPower ? @"YES" : @"NO",
+          visibilityReduction ? @"YES" : @"NO");
+    [self applyPerformanceSettings];
+  }
+}
+
+- (void)applyPerformanceSettings {
+  NSScreen *mainScreen = [NSScreen mainScreen];
+  CGFloat screenScale = self.targetScreen ? self.targetScreen.backingScaleFactor
+                                          : (mainScreen ? mainScreen.backingScaleFactor : 1.0);
+  if (screenScale <= 0.0)
+    screenScale = 1.0;
+
+  CGSize targetResolution = CGSizeZero;
+  CGFloat downscaleFactor = self.visibilityReductionActive ? 0.5f : 0.75f;
+
+  if (self.reducedPerformanceMode) {
+    CGRect bounds = [self targetDisplayBounds];
+    CGFloat width = MAX(bounds.size.width * downscaleFactor, 640.0f);
+    CGFloat height = MAX(bounds.size.height * downscaleFactor, 360.0f);
+    targetResolution = CGSizeMake(width, height);
+  }
+
+  self.targetPlaybackRate = self.visibilityReductionActive ? 0.75f : 1.0f;
+
+  double peakBitRate = self.reducedPerformanceMode ? 6e6 : 0.0;
+  CGFloat layerScale = self.reducedPerformanceMode ? 1.0f : screenScale;
+
+  for (AVPlayerLayer *layer in _playerLayers) {
+    layer.contentsScale = layerScale;
+  }
+
+  for (AVQueuePlayer *player in _players) {
+    AVPlayerItem *item = player.currentItem;
+    if (item) {
+      item.preferredMaximumResolution = targetResolution;
+      item.preferredPeakBitRate = peakBitRate;
+    }
+  }
+
+  for (AVPlayerLooper *looper in _loopers) {
+    for (AVPlayerItem *loopItem in looper.loopingPlayerItems) {
+      loopItem.preferredMaximumResolution = targetResolution;
+      loopItem.preferredPeakBitRate = peakBitRate;
+    }
+  }
+
+  [self applyCurrentPlaybackRateToActivePlayers];
+}
+
+- (void)applyCurrentPlaybackRateToActivePlayers {
+  for (AVQueuePlayer *player in _players) {
+    if (player.rate > 0.0f) {
+      [player playImmediatelyAtRate:self.targetPlaybackRate];
+    }
   }
 }
 - (BOOL)isScreenLocked {
@@ -334,6 +703,20 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   return isLocked;
 }
 
+- (void)activeApplicationChanged:(NSNotification *)notification {
+  if (self.screen_locked)
+    return;
+
+  [self checkAndUpdatePlaybackState];
+}
+
+- (void)activeSpaceChanged:(NSNotification *)notification {
+  if (self.screen_locked)
+    return;
+
+  [self checkAndUpdatePlaybackState];
+}
+
 - (BOOL)isFrontmostAppAllowed {
   NSRunningApplication *front =
       [[NSWorkspace sharedWorkspace] frontmostApplication];
@@ -341,57 +724,65 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   if (!front)
     return YES;
 
-  // Don’t pause when user is interacting with your preferences window
-  if ([front.bundleIdentifier isEqualToString:@"your.app.bundle.id"])
-    return YES;
+  static NSSet<NSString *> *allowedBundleIDs;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    allowedBundleIDs = [NSSet setWithArray:@[
+      @"com.apple.finder",
+      @"com.biosthusvill.LiveWallpaper"
+    ]];
+  });
 
-  return NO;
-}
-
-- (void)activeApplicationChanged:(NSNotification *)notification {
-  if (!self.autoPauseEnabled)
-    return;
-
-  if (self.screen_locked)
-    return;
-
-  NSRunningApplication *activeApp =
-      notification.userInfo[NSWorkspaceApplicationKey];
-
-  if (!activeApp)
-    return;
-
-  NSString *bundleID = activeApp.bundleIdentifier;
-
-  BOOL allowedApp =
-      [bundleID isEqualToString:@"com.apple.finder"] ||
-      [bundleID isEqualToString:@"com.biosthusvill.LiveWallpaper"];
-
-  if (allowedApp) {
-    [self resumeAllPlayers];
-    NSLog(@"[AutoPause] App %@ allowed → resume", bundleID);
-  } else {
-    [self pauseAllPlayers];
-    NSLog(@"[AutoPause] App %@ not allowed → pause", bundleID);
-  }
+  return [allowedBundleIDs containsObject:front.bundleIdentifier];
 }
 
 - (void)resumeAllPlayers {
-  BOOL isPlaying = (_players.firstObject.rate > 0);
-  if (!isPlaying) {
-    for (AVQueuePlayer *player in _players)
-      [player play];
-    NSLog(@"[Daemon] Resumed playback");
+  if (_players.count == 0)
+    return;
+
+  if (!self.playbackPaused)
+    return;
+
+  for (AVQueuePlayer *player in _players) {
+    player.actionAtItemEnd = AVPlayerActionAtItemEndAdvance;
+    [player playImmediatelyAtRate:self.targetPlaybackRate];
   }
+
+  CFTimeInterval resumeTime = CACurrentMediaTime();
+  for (AVPlayerLayer *layer in _playerLayers) {
+    CFTimeInterval pausedTime = layer.timeOffset;
+    layer.speed = 1.0f;
+    layer.timeOffset = 0.0f;
+    CFTimeInterval timeSincePause =
+        [layer convertTime:resumeTime fromLayer:nil] - pausedTime;
+    layer.beginTime = timeSincePause;
+  }
+
+  self.playbackPaused = NO;
+  NSLog(@"[Daemon] Resumed playback");
 }
 
 - (void)pauseAllPlayers {
-  BOOL isPlaying = (_players.firstObject.rate > 0);
-  if (isPlaying) {
-    for (AVQueuePlayer *player in _players)
-      [player pause];
-    NSLog(@"[Daemon] Paused playback");
+  if (self.playbackPaused)
+    return;
+
+  for (AVQueuePlayer *player in _players) {
+    [player pause];
+    player.actionAtItemEnd = AVPlayerActionAtItemEndPause;
+    player.rate = 0.0f;
   }
+
+  CFTimeInterval pauseTime = CACurrentMediaTime();
+  for (AVPlayerLayer *layer in _playerLayers) {
+    CFTimeInterval layerPauseTime =
+        [layer convertTime:pauseTime fromLayer:nil];
+    layer.speed = 0.0f;
+    layer.timeOffset = layerPauseTime;
+    layer.beginTime = layerPauseTime;
+  }
+
+  self.playbackPaused = YES;
+  NSLog(@"[Daemon] Paused playback");
 }
 
 - (void)setAutoPauseEnabled:(BOOL)enabled {
@@ -407,6 +798,7 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   //   // If enabled, immediately check current state
   //   [self checkAndUpdatePlaybackState];
   // }
+  [self checkAndUpdatePlaybackState];
 }
 
 - (void)setVolume:(float)volume {
