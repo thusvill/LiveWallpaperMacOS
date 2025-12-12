@@ -1,16 +1,16 @@
 > [!NOTE]
-> ## I’ll be updating this repo from time to time with good features — Please be patient :)!
+> ## I’ll be Transformin Objective C++ UI's to SwiftUI.But ```daemon``` won't change.
 
-# LiveWallpaper App for MacOS 15+
+# LiveWallpaper App for MacOS 26+
 
 
 ![Roller](./asset/livewall.png)
 
-This is an open-source live wallpaper applicationn for MacOS 15+
+This is an open-source live wallpaper applicationn for MacOS 26+
 
-## Install using brew
+<!-- ## Install using brew
 
-Run this on terminal `brew tap thusvill/livewallpaper && brew install --cask livewallpaper`
+Run this on terminal `brew tap thusvill/livewallpaper && brew install --cask livewallpaper` -->
 
 ## Guide for DMG Installation
 
@@ -40,15 +40,15 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 
 
 
-## Installation(Compile from source)
+<!-- ## Installation(Compile from source)
 - macOS 15+
 - git
 - Xcode
 - Cmake
   
-Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)`
+Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)` -->
 
-## Gallery
+<!-- ## Gallery
 > <img width="185" height="134" alt="Screenshot 2025-11-30 at 1 52 01 PM" src="https://github.com/user-attachments/assets/0c91fb29-e729-485b-8f93-7080aed68881" />
 > <img width="185" height="134" alt="Screenshot 2025-11-30 at 1 51 53 PM" src="https://github.com/user-attachments/assets/7848d2fd-8cc4-4271-a4c0-2868bdf00422" />
  
@@ -63,7 +63,7 @@ Run this: `git clone https://github.com/thusvill/LiveWallpaperMacOS.git && cd Li
 
  
 
-> https://github.com/user-attachments/assets/748c7078-1f99-4182-876f-08aa59d2bc63
+> https://github.com/user-attachments/assets/748c7078-1f99-4182-876f-08aa59d2bc63 -->
  
 
 For license details, see [LICENSE](LICENSE).
