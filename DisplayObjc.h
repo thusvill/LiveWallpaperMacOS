@@ -1,4 +1,3 @@
-
 /*
  * This file is part of LiveWallpaper – LiveWallpaper App for macOS.
  * Copyright (C) 2025 Bios thusvill
@@ -16,12 +15,25 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-#pragma once
 
-#import <Cocoa/Cocoa.h>
+#import <Foundation/Foundation.h>
+#import <CoreGraphics/CoreGraphics.h>
 
-@interface LineModule : NSView
+@interface DisplayObjc : NSObject
 
-- (void)add:(NSView *)view;
+@property(nonatomic) int daemon;
+@property(nonatomic) CGDirectDisplayID screen;
+@property(nonatomic, strong) NSString *uuid;
+@property(nonatomic, strong) NSString *videoPath;
+@property(nonatomic, strong) NSString *framePath;
+
+- (instancetype)initWithDaemon:(int)daemon
+                        screen:(CGDirectDisplayID)screen
+                          uuid:(NSString *)uuid
+                     videoPath:(NSString *)videoPath
+                     framePath:(NSString *)framePath;
+
+- (NSString*)getDisplayName;
+- (NSString*)getResolution;
+
 @end
-

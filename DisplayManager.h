@@ -28,6 +28,7 @@
 #include <set>
 #include <signal.h>
 #include <unistd.h>
+#include <unordered_map>
 #include <unordered_set>
 
 // typedef for private function
@@ -182,17 +183,17 @@ public:
 
 static std::list<Display> displays{};
 
-static void PrintDisplays(const std::list<Display> &displays) {
-  NSLog(@"---- Display List ----");
-  for (const auto &d : displays) {
-    NSString *video = [NSString stringWithUTF8String:d.videoPath.c_str()];
-    NSString *frame = [NSString stringWithUTF8String:d.framePath.c_str()];
-
-    NSLog(@"Daemon: %d | Screen: %u | Video: %@ | Frame: %@", d.daemon,
-          d.screen, video, frame);
-  }
-  NSLog(@"----------------------");
-}
+//static void PrintDisplays(const std::list<Display> &displays) {
+//  NSLog(@"---- Display List ----");
+//  for (const auto &d : displays) {
+//    NSString *video = [NSString stringWithUTF8String:d.videoPath.c_str()];
+//    NSString *frame = [NSString stringWithUTF8String:d.framePath.c_str()];
+//
+//    NSLog(@"Daemon: %d | Screen: %u | Video: %@ | Frame: %@", d.daemon,
+//          d.screen, video, frame);
+//  }
+//  NSLog(@"----------------------");
+//}
 
 static void ScanDisplays() {
   NSArray *screens = [NSScreen screens];
@@ -264,15 +265,15 @@ static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
   displays.push_back(newDisplay);
 }
 
-static void waitForScreensReady(void (^completion)(void)) {
-  __block int retries = 20; // ~1 second
-  void (^check)(void) = ^{
-    if (NSScreen.screens.count > 0 || retries-- <= 0) {
-      completion();
-    } else {
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.05 * NSEC_PER_SEC),
-                     dispatch_get_main_queue(), check);
-    }
-  };
-  check();
-}
+//static void waitForScreensReady(void (^completion)(void)) {
+//  __block int retries = 20; // ~1 second
+//  void (^check)(void) = ^{
+//    if (NSScreen.screens.count > 0 || retries-- <= 0) {
+//      completion();
+//    } else {
+//      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.05 * NSEC_PER_SEC),
+//                     dispatch_get_main_queue(), check);
+//    }
+//  };
+//  check();
+//}

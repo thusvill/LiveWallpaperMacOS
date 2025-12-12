@@ -1,14 +1,26 @@
-//
-//  ContentView.swift
-//  LiveWallpaper
-//
-//  Created by mac on 2025-12-11.
-//
+/*
+ * This file is part of LiveWallpaper – LiveWallpaper App for macOS.
+ * Copyright (C) 2025 Bios thusvill
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 
 import SwiftUI
 import AVFoundation
 import UniformTypeIdentifiers
 import Combine
+
 
 
 
@@ -21,6 +33,26 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+//            HStack {
+//                            Image(systemName: "play.circle")
+//                            Text("LiveWallpaper Settings")
+//                                .font(.headline)
+//                            Spacer()
+//                            Button(action: {
+//                                NSApp.mainWindow?.orderOut(nil)
+//                            }) {
+//                                Image(systemName: "xmark.circle.fill")
+//                            }
+//                            .buttonStyle(BorderlessButtonStyle())
+//                            .glassEffect(.clear.tint(.red))
+//                            .font(Font.system(size: 15, weight: .bold, design: .default))
+//                        }
+//                        .padding()
+//                        .glassEffect(.regular, in: .rect(cornerRadius: 1))
+//                        
+//                        Divider()
+            Spacer(minLength: 20)
+            
             // Top toolbar
             ToolbarView(
                 showSettings: $showSettings,
@@ -44,7 +76,7 @@ struct ContentView: View {
 
                 
                 DisplayDockView(
-                            displays: displayManager.displays,
+                    displays: displayManager.displays,
                             selectedDisplays: $selectedDisplays
                         )
                         
@@ -52,8 +84,10 @@ struct ContentView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .ignoresSafeArea(.all)
         .glassEffect(.regular, in: .rect(cornerRadius: 16))
         .frame(minWidth: 600, minHeight: 250)
+        
         .sheet(isPresented: $showSettings) {
             SettingsView(viewModel: viewModel)
         }
@@ -61,6 +95,7 @@ struct ContentView: View {
             viewModel.loadDisplays()
             viewModel.reloadContent()
         }
+        
     }
 }
 
@@ -78,13 +113,13 @@ struct ToolbarView: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 16))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.glass)
             
             Button(action: { showSettings = true }) {
                 Image(systemName: "gear")
                     .font(.system(size: 16))
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.glass)
         }
     }
 }
@@ -102,9 +137,10 @@ struct VideoGridView: View {
                 ForEach(videos) { video in
                     VideoThumbnailButton(video: video) {
                         onVideoSelect(video)
-                    }
+                    }.id(video.id)
                 }
             }
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: columns)
             .padding(.horizontal, 24)
             .padding(.vertical, 12)
             
@@ -119,10 +155,14 @@ struct VideoGridView: View {
 struct VideoThumbnailButton: View {
     let video: VideoItem
     let action: () -> Void
+    @ObservedObject private var cache = ThumbnailCache.shared
     
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .bottomTrailing) {
+                
+                let _ = cache.lastUpdate
+                
                 if let thumbnail = video.loadThumbnail() {
                     Image(nsImage: thumbnail)
                         .resizable()
@@ -134,7 +174,13 @@ struct VideoThumbnailButton: View {
                         .fill(Color.gray.opacity(0.3))
                         .frame(height: 140)
                         .overlay {
-                            ProgressView()
+                            VStack(spacing: 4) {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                Text("Generating...")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
                         }
                 }
                 
@@ -146,10 +192,10 @@ struct VideoThumbnailButton: View {
             .cornerRadius(10)
         }
         .buttonStyle(.plain)
+        .padding(2)
         .help(video.filename)
     }
 }
-
 
 // MARK: - Quality Badge
 struct QualityBadge: View {
@@ -172,9 +218,10 @@ struct QualityBadge: View {
     }
 }
 class DisplayManager: ObservableObject {
-    @Published var displays: [DisplayInfo] = []
+    @Published var displays: [DisplayObjc] = []
 
     init() {
+        sharedEngine?.scanDisplays()
         updateDisplays()
         CGDisplayRegisterReconfigurationCallback(displayReconfigCallback, Unmanaged.passUnretained(self).toOpaque())
     }
@@ -184,22 +231,15 @@ class DisplayManager: ObservableObject {
     }
 
     func updateDisplays() {
-        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
-        var count: UInt32 = 0
-        CGGetActiveDisplayList(16, &ids, &count)
-
-        displays = (0..<Int(count)).map { i in
-            let id = ids[i]
-            let w = CGDisplayPixelsWide(id)
-            let h = CGDisplayPixelsHigh(id)
-            let name = NSScreen.screens.first { screen in
-                if let n = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber {
-                    return n.uint32Value == id
+        
+        sharedEngine?.scanDisplays()
+        
+        DispatchQueue.main.async { [weak self] in
+                    self?.displays = sharedEngine?.getDisplays() as? [DisplayObjc] ?? []
                 }
-                return false
-            }?.localizedName ?? "Display \(id)"
-            return DisplayInfo(id: id, name: name, resolution: "\(w)x\(h)")
-        }
+        
+        
+        
     }
 }
 
@@ -218,41 +258,41 @@ private func displayReconfigCallback(
 
 // MARK: - Display Dock View
 struct DisplayDockView: View {
-    let displays: [DisplayInfo]
+    let displays: [DisplayObjc]
     @Binding var selectedDisplays: Set<UInt32>
     
     var body: some View {
-        
+        GlassEffectContainer(spacing: 40.0) {
             HStack(spacing: 8) {
-                ForEach(displays) { display in
+                
+                ForEach(displays, id: \.screen) { display in
                     DisplayButton(
                         display: display,
-                        isSelected: selectedDisplays.contains(display.id)
+                        isSelected: selectedDisplays.contains(display.screen)
                     ) {
                         withAnimation(.easeOut(duration: 0.25)) {
-                            if selectedDisplays.contains(display.id) {
-                                selectedDisplays.remove(display.id)
+                            if selectedDisplays.contains(display.screen) {
+                                selectedDisplays.remove(display.screen)
                             } else {
-                                selectedDisplays.insert(display.id)
+                                selectedDisplays.insert(display.screen)
                             }
                         }
                     }
+                    
                 }
-
             }
+            .id(displays.count)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(
-                    Color.clear
-            )
-            .animation(.easeOut(duration: 0.25), value: displays.count)
-        
+            .background(Color.clear.opacity(0.0))
+            .animation(.easeOut(duration: 0.25), value: displays.map { $0.screen })
+        }
     }
 }
 
 // MARK: - Display Button
 struct DisplayButton: View {
-    let display: DisplayInfo
+    let display: DisplayObjc
     let isSelected: Bool
     let action: () -> Void
     
@@ -261,11 +301,11 @@ struct DisplayButton: View {
             VStack(spacing: 4) {
                 Spacer()
                 
-                Text(display.name)
+                Text(display.getDisplayName())
                     .font(.system(size: 12, weight: .bold))
                     .lineLimit(1)
                 
-                Text(display.resolution)
+                Text(display.getResolution())
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                 
@@ -285,12 +325,16 @@ struct DisplayButton: View {
                 color: isSelected ? .yellow.opacity(4) : .clear,
                 radius: 20
             )
+            .buttonBorderShape(.roundedRectangle(radius: 12))
             .animation(.easeInOut(duration: 0.25), value: isSelected)
             .glassEffect(.regular, in: .rect(cornerRadius: 12))
             
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
-        .buttonStyle(.plain)
+//        .buttonStyle(BorderlessButtonStyle())
+        .buttonStyle(.glass)
+        
+
     }
 }
 
@@ -309,14 +353,21 @@ struct SettingsView: View {
                     .font(.title2)
                     .fontWeight(.bold)
                 Spacer()
-                Button("Done") {
-                    dismiss()
-                }
+                Button(action: {
+                                                dismiss()
+                                            }) {
+                                                Image(systemName: "xmark.circle.fill")
+                                            }
+                                            .buttonStyle(BorderlessButtonStyle())
+                                            .glassEffect(.clear.tint(.red))
+                                                                       .font(Font.system(size: 16, weight: .bold, design: .default))
+                
             }
+            
             .padding(.bottom, 8)
             
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing:20) {
                     // Folder Selection
                     SettingRow(title: "Wallpaper Folder") {
                         HStack {
@@ -407,6 +458,7 @@ struct SettingsView: View {
         .padding()
         .frame(width: 600, height: 500)
         .background(.ultraThinMaterial)
+        .glassEffect(.regular, in: .rect(cornerRadius: 1))
     }
     
     private func selectFolder() {
@@ -419,6 +471,7 @@ struct SettingsView: View {
         
         if panel.runModal() == .OK, let url = panel.url {
             viewModel.folderPath = url.path
+            sharedEngine?.selctFolder(url.path())
             viewModel.reloadContent()
         }
     }
@@ -456,38 +509,76 @@ struct VideoItem: Identifiable {
         return ThumbnailCache.shared.image(for: thumbnailPath)
     }
 }
-
-class ThumbnailCache {
+class ThumbnailCache: ObservableObject {
     static let shared = ThumbnailCache()
     private let cache = NSCache<NSString, NSImage>()
+    @Published var lastUpdate = Date()
     
     private init() {
-        cache.countLimit = 50 // keep only 50 thumbnails in memory
+        cache.countLimit = 100
+        
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(thumbnailSaved(_:)),
+            name: NSNotification.Name("ThumbnailSaved"),
+            object: nil
+        )
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(thumbnailsGenerated),
+            name: NSNotification.Name("ThumbnailsGenerated"),
+            object: nil
+        )
+    }
+    
+    @objc private func thumbnailSaved(_ notification: Notification) {
+        if let path = notification.userInfo?["path"] as? String {
+            
+            cache.removeObject(forKey: path as NSString)
+        }
+        DispatchQueue.main.async {
+            self.lastUpdate = Date()
+        }
+    }
+    
+    @objc private func thumbnailsGenerated() {
+        
+        cache.removeAllObjects()
+        DispatchQueue.main.async {
+            self.lastUpdate = Date()
+        }
     }
     
     func image(for path: String) -> NSImage? {
-        if let cached = cache.object(forKey: path as NSString) { return cached }
-        guard let img = NSImage(contentsOfFile: path) else { return nil }
+        if let cached = cache.object(forKey: path as NSString) {
+            return cached
+        }
+        
+        guard FileManager.default.fileExists(atPath: path),
+              let img = NSImage(contentsOfFile: path) else {
+            return nil
+        }
+        
         cache.setObject(img, forKey: path as NSString)
         return img
+    }
+    
+    func clearCache() {
+        cache.removeAllObjects()
+        lastUpdate = Date()
     }
 }
 
 
 
 
-
-
-struct DisplayInfo: Identifiable {
-    let id: UInt32
-    let name: String
-    let resolution: String
-}
 
 class WallpaperViewModel: ObservableObject {
 
     @Published var videos: [VideoItem] = []
-    @Published var displays: [DisplayInfo] = []
+    @Published var displays: [DisplayObjc] = []
     @Published var folderPath: String = ""
     @Published var scaleMode: String = "fill"
     @Published var randomOnStartup: Bool = false
@@ -499,13 +590,10 @@ class WallpaperViewModel: ObservableObject {
     let engine: WallpaperEngine
 
     init(engine: WallpaperEngine = sharedEngine ?? WallpaperEngine.shared()) {
-            self.engine = engine
-            
-            loadSettings()
-            self.engine.setupNotifications()
-        }
-
-    
+        self.engine = engine
+        loadSettings()
+        self.engine.setupNotifications()
+    }
 
     deinit {
         engine.removeNotifications()
@@ -518,8 +606,12 @@ class WallpaperViewModel: ObservableObject {
         pauseOnAppFocus = defaults.bool(forKey: "pauseOnAppFocus")
         volume = Double(defaults.float(forKey: "wallpapervolumeprecentage"))
     }
+    
     func reloadContent() {
         engine.checkFolderPath()
+        
+        // Clear thumbnail cache to force fresh load
+        ThumbnailCache.shared.clearCache()
         
         guard let files = try? FileManager.default.contentsOfDirectory(atPath: folderPath) else { return }
 
@@ -545,33 +637,30 @@ class WallpaperViewModel: ObservableObject {
             DispatchQueue.main.async {
                 if reloadID == self.currentReloadID {
                     self.videos = newVideos
+                    
+                    // Check if any thumbnails are missing and generate once
+                    let missingThumbnails = newVideos.filter { $0.loadThumbnail() == nil }
+                    if !missingThumbnails.isEmpty {
+                        NSLog("Found \(missingThumbnails.count) videos without thumbnails, generating...")
+                        self.engine.generateThumbnails()
+                    }
                 }
             }
         }
     }
 
     func loadDisplays() {
-        var ids = [CGDirectDisplayID](repeating: 0, count: 16)
-        var count: UInt32 = 0
-        CGGetActiveDisplayList(16, &ids, &count)
-
-        displays = (0..<Int(count)).map { i in
-            let id = ids[i]
-            let w = CGDisplayPixelsWide(id)
-            let h = CGDisplayPixelsHigh(id)
-            let name = getDisplayName(for: id)
-            return DisplayInfo(id: id, name: name, resolution: "\(w)x\(h)")
-        }
+        displays = sharedEngine?.getDisplays() as! [DisplayObjc]
     }
 
     func startWallpaper(video: VideoItem, displays: [UInt32]) {
         let arr = displays.map { NSNumber(value: $0) }
-        
         engine.startWallpaper(withPath: video.path, onDisplays: arr)
     }
 
     func clearCache() {
         engine.clearCache()
+        ThumbnailCache.shared.clearCache()
         reloadContent()
     }
 
@@ -597,9 +686,9 @@ class WallpaperViewModel: ObservableObject {
 }
 
 
-
 #Preview {
     ContentView()
+    SettingsView(viewModel: WallpaperViewModel())
 }
 
 
