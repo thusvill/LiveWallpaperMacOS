@@ -67,20 +67,65 @@ static SaveSystem *saveSystem;
 
     _wallpaperSemaphore = dispatch_semaphore_create(2);
     ScanDisplays();
+      
+      [self killAllDaemons];
     saveSystem = new SaveSystem();
     displays = saveSystem->Load();
+    
+      
+      NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+      
+      
+      
       for(Display display : displays){
           if(!display.videoPath.empty()){
               CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-              [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
-                                onDisplays:@[@(displayID)]];
+              if(![defaults boolForKey:@"random"]){
+                  [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
+                                    onDisplays:@[@(displayID)]];
+              }else{
+                  [self startWallpaperWithPath:[self getRandomVideoFileFromFolder:[self getFolderPath]]
+                                    onDisplays:@[@(displayID)]];
+                  
+              }
 
           }
       }
   }
   return self;
 }
+
+
+- (NSString *)getRandomVideoFileFromFolder:(NSString *)folderPath {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *error = nil;
+    
+    NSArray<NSString *> *allFiles = [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
+    
+    if (error) {
+        NSLog(@"Error reading directory: %@", error.localizedDescription);
+        return nil;
+    }
+    
+    NSMutableArray<NSString *> *videoFiles = [NSMutableArray array];
+    
+    for (NSString *fileName in allFiles) {
+        NSString *fileExtension = [[fileName pathExtension] lowercaseString];
+        
+        if ([fileExtension isEqualToString:@"mp4"] || [fileExtension isEqualToString:@"mov"]) {
+            NSString *fullPath = [folderPath stringByAppendingPathComponent:fileName];
+            [videoFiles addObject:fullPath];
+        }
+    }
+    
+    if (videoFiles.count == 0) {
+        return nil;
+    }
+
+    NSUInteger randomIndex = arc4random_uniform((uint32_t)videoFiles.count);
+    return videoFiles[randomIndex];
+}
+
 
 - (void)dealloc {
   [self removeNotifications];
@@ -715,43 +760,58 @@ static SaveSystem *saveSystem;
   }
 }
 
-- (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL {
-  AVAsset *asset = [AVAsset assetWithURL:videoURL];
+- (void)videoQualityBadgeForURL:(NSURL *)url
+                     completion:(void (^)(NSString *badge))completion
+{
+    AVAsset *asset = [AVAsset assetWithURL:url];
 
-  __block AVAssetTrack *videoTrack = nil;
-  if (@available(macOS 15.0, *)) {
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    [asset loadTracksWithMediaType:AVMediaTypeVideo
-                 completionHandler:^(NSArray<AVAssetTrack *> *_Nullable tracks,
-                                     NSError *_Nullable error) {
-                   if (!error && tracks.count > 0) {
-                     videoTrack = tracks.firstObject;
-                   }
-                   dispatch_semaphore_signal(semaphore);
-                 }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-  } else {
+    if (@available(macOS 15.0, *)) {
+
+        [asset loadTracksWithMediaType:AVMediaTypeVideo
+                     completionHandler:^(NSArray<AVAssetTrack *> *tracks,
+                                         NSError *error) {
+
+            NSString *badge = @"";
+
+            if (!error && tracks.count > 0) {
+                AVAssetTrack *videoTrack = tracks.firstObject;
+                badge = [self badgeFromVideoTrack:videoTrack];
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(badge);
+            });
+        }];
+
+    } else {
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+        AVAssetTrack *videoTrack =
+            [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
 #pragma clang diagnostic pop
-  }
 
-  if (!videoTrack)
+        NSString *badge = videoTrack ? [self badgeFromVideoTrack:videoTrack] : @"";
+        completion(badge);
+    }
+}
+
+- (NSString *)badgeFromVideoTrack:(AVAssetTrack *)videoTrack
+{
+    CGSize resolution =
+        CGSizeApplyAffineTransform(videoTrack.naturalSize,
+                                   videoTrack.preferredTransform);
+
+    resolution.width = fabs(resolution.width);
+    resolution.height = fabs(resolution.height);
+
+    if (resolution.width >= 3840 || resolution.height >= 2160)
+        return @"4K";
+    if (resolution.width >= 1920 || resolution.height >= 1080)
+        return @"HD";
+    if (resolution.width >= 1280 || resolution.height >= 720)
+        return @"SD";
+
     return @"";
-
-  CGSize resolution = CGSizeApplyAffineTransform(videoTrack.naturalSize,
-                                                 videoTrack.preferredTransform);
-  resolution.width = fabs(resolution.width);
-  resolution.height = fabs(resolution.height);
-
-  if (resolution.width >= 3840 || resolution.height >= 2160)
-    return @"4K";
-  if (resolution.width >= 1920 || resolution.height >= 1080)
-    return @"HD";
-  if (resolution.width >= 1280 || resolution.height >= 720)
-    return @"SD";
-  return @"";
 }
 
 - (NSImage *)image:(NSImage *)image withBadge:(NSString *)badge {

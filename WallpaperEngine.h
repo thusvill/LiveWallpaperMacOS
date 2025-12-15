@@ -59,7 +59,8 @@
 - (void)generateStaticWallpapersForFolder:(NSString *)folderPath
                            withCompletion:(void (^)(void))completion;
 
-- (NSString *)videoQualityBadgeForURL:(NSURL *)videoURL;
+- (void)videoQualityBadgeForURL:(NSURL *)url
+                     completion:(void (^)(NSString *badge))completion;
 - (NSImage *)image:(NSImage *)image withBadge:(NSString *)badge;
 
 - (void)setupNotifications;

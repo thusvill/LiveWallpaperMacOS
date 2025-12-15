@@ -73,10 +73,10 @@
     _playerLayers = [NSMutableArray array];
     _loopers = [NSMutableArray array];
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    if ([defaults objectForKey:@"pauseOnAppFocus"] == nil) {
-      [defaults setBool:YES forKey:@"pauseOnAppFocus"];
-      [defaults synchronize];
-    }
+//    if ([defaults objectForKey:@"pauseOnAppFocus"] == nil) {
+//      [defaults setBool:YES forKey:@"pauseOnAppFocus"];
+//      [defaults synchronize];
+//    }
     _autoPauseEnabled =
       [defaults boolForKey:@"pauseOnAppFocus"];
     _wasPlayingBeforeSleep = YES;
@@ -746,6 +746,7 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   for (AVQueuePlayer *player in _players) {
     player.actionAtItemEnd = AVPlayerActionAtItemEndAdvance;
     [player playImmediatelyAtRate:self.targetPlaybackRate];
+    
   }
 
   CFTimeInterval resumeTime = CACurrentMediaTime();

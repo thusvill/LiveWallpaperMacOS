@@ -260,11 +260,11 @@ private func displayReconfigCallback(
 struct DisplayDockView: View {
     let displays: [DisplayObjc]
     @Binding var selectedDisplays: Set<UInt32>
+    @Namespace private var namespace
     
     var body: some View {
-        GlassEffectContainer(spacing: 40.0) {
-            HStack(spacing: 8) {
-                
+        GlassEffectContainer(spacing: 10.0) {
+            HStack(spacing: 10) {
                 ForEach(displays, id: \.screen) { display in
                     DisplayButton(
                         display: display,
@@ -278,14 +278,12 @@ struct DisplayDockView: View {
                             }
                         }
                     }
-                    
+                    .matchedGeometryEffect(id: display.screen, in: namespace)
                 }
             }
-            .id(displays.count)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(Color.clear.opacity(0.0))
-            .animation(.easeOut(duration: 0.25), value: displays.map { $0.screen })
+            .animation(.spring(response: 0.4, dampingFraction: 0.75), value: displays.map { $0.screen })
         }
     }
 }
@@ -300,42 +298,52 @@ struct DisplayButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Spacer()
-                
+
                 Text(display.getDisplayName())
                     .font(.system(size: 12, weight: .bold))
                     .lineLimit(1)
-                
+
                 Text(display.getResolution())
                     .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                
+                    .foregroundStyle(.secondary)
+
                 Spacer()
             }
-            .foregroundColor(.primary)
             .frame(width: 200, height: 80)
-            .background(Color.clear)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(
-                        isSelected ? Color.yellow : Color.white.opacity(0.4),
-                        lineWidth: isSelected ? 2.5 : 1.5
+            .foregroundStyle(.primary)
+            .contentShape(Rectangle())
+            .glassEffect(
+                .clear.interactive(),
+                in: .rect(cornerRadius: isSelected ? 26 : 20, style: .continuous)
+            )
+            .overlay {
+                if isSelected {
+                    RoundedRectangle(
+                        cornerRadius: 26,
+                        style: .continuous
                     )
-            )
-            .shadow(
-                color: isSelected ? .yellow.opacity(4) : .clear,
-                radius: 20
-            )
-            .buttonBorderShape(.roundedRectangle(radius: 12))
-            .animation(.easeInOut(duration: 0.25), value: isSelected)
-            .glassEffect(.regular, in: .rect(cornerRadius: 12))
-            
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+                    .stroke(Color.yellow, lineWidth: 2)
+                }
+            }
         }
-//        .buttonStyle(BorderlessButtonStyle())
-        .buttonStyle(.glass)
-        
-
+        .buttonStyle(.plain)
+        .scaleEffect(isSelected ? 1.03 : 1.0)
+        .shadow(
+            color: isSelected
+                ? Color.yellow.opacity(0.45)
+                : Color.black.opacity(0.15),
+            radius: isSelected ? 20 : 10,
+            y: 8
+        )
+        .animation(
+            .spring(
+                response: 0.45,
+                dampingFraction: 0.75
+            ),
+            value: isSelected
+        )
     }
+    
 }
 
 
@@ -387,9 +395,33 @@ struct SettingsView: View {
                     
                     Divider()
                     
-                    // Video Scaling Mode
+                    //Scale mode
                     SettingRow(title: "Video Scaling Mode") {
-                        Picker("", selection: $viewModel.scaleMode) {
+                        Picker("", selection: Binding(
+                            get: {
+                                let mode = UserDefaults.standard.integer(forKey: "scale_mode")
+                                switch mode {
+                                case 0: return "fill"
+                                case 1: return "fit"
+                                case 2: return "stretch"
+                                case 3: return "center"
+                                case 4: return "height-fill"
+                                default: return "fill"
+                                }
+                            },
+                            set: { newValue in
+                                let intValue: Int
+                                switch newValue {
+                                case "fill": intValue = 0
+                                case "fit": intValue = 1
+                                case "stretch": intValue = 2
+                                case "center": intValue = 3
+                                case "height-fill": intValue = 4
+                                default: intValue = 0
+                                }
+                                UserDefaults.standard.set(intValue, forKey: "scale_mode")
+                            }
+                        )) {
                             Text("Fill").tag("fill")
                             Text("Fit").tag("fit")
                             Text("Stretch").tag("stretch")
@@ -404,13 +436,21 @@ struct SettingsView: View {
                     
                     // Random Wallpaper on Startup
                     SettingRow(title: "Random Wallpaper on Startup") {
-                        Toggle("", isOn: $viewModel.randomOnStartup)
+                        Toggle("", isOn: Binding(
+                                get: { UserDefaults.standard.bool(forKey: "random") },
+                                set: { UserDefaults.standard.set($0, forKey: "random") }
+                            ))
                             .toggleStyle(.switch)
+
+                            
                     }
                     
                     // Auto-Pause When App is Active
                     SettingRow(title: "Pause When App is Active") {
-                        Toggle("", isOn: $viewModel.pauseOnAppFocus)
+                        Toggle("", isOn: Binding(
+                                get: { UserDefaults.standard.bool(forKey: "pauseOnAppFocus") },
+                                set: { UserDefaults.standard.set($0, forKey: "pauseOnAppFocus") }
+                            ))
                             .toggleStyle(.switch)
                     }
                     
@@ -630,7 +670,8 @@ class WallpaperViewModel: ObservableObject {
                 let thumbPath = (self.engine.thumbnailCachePath() as NSString?)?.appendingPathComponent("\(base).png") ?? ""
                 
                 var item = VideoItem(filename: f, path: full, thumbnailPath: thumbPath)
-                item.quality = self.engine.videoQualityBadge(for: URL(fileURLWithPath: full))
+//                item.quality = self.engine.videoQualityBadge(for: URL(fileURLWithPath: full))
+                self.engine.videoQualityBadge(for: URL(fileURLWithPath: full)){badge in item.quality = badge}
                 return item
             }
 
