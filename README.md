@@ -1,5 +1,6 @@
 > [!NOTE]
-> ## I’ll be updating this repo from time to time with good features — Please be patient :)!
+> ## If you were using the old ```main``` branch, update the rename changes by running:
+> ```git branch -m main ObjectiveC && git fetch origin && git branch -u origin/ObjectiveC ObjectiveC && git remote set-head origin -a ```
 
 # LiveWallpaper App for MacOS 15+
 
