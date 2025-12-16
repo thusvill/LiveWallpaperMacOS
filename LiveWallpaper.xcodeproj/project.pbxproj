@@ -12,7 +12,7 @@
 		04E055462EEA795900F90A44 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055452EEA795900F90A44 /* CoreVideo.framework */; };
 		04E055482EEA795F00F90A44 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055472EEA795F00F90A44 /* CoreGraphics.framework */; };
 		04E055F12EEA8D5700F90A44 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055E22EEA8CB600F90A44 /* Cocoa.framework */; };
-		04E055F22EEA8D5C00F90A44 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055412EEA794C00F90A44 /* AVFoundation.framework */; };
+		04E055F22EEA8D5C00F90A44 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055412EEA794C00F90A44 /* AVFoundation.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 		04E055F32EEA8D6500F90A44 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055E02EEA8C2E00F90A44 /* IOKit.framework */; };
 		04E055F42EEA8D6800F90A44 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055472EEA795F00F90A44 /* CoreGraphics.framework */; };
 		04E055F52EEA8D7100F90A44 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055DE2EEA8C2600F90A44 /* QuartzCore.framework */; };
@@ -1014,6 +1014,7 @@
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]" = com.thusvill.Livewallpaper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
@@ -1039,6 +1040,7 @@
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				MACOSX_DEPLOYMENT_TARGET = 15.6;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=macosx*]" = com.thusvill.Livewallpaper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;

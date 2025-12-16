@@ -78,23 +78,43 @@ static SaveSystem *saveSystem;
       
       
       for(Display display : displays){
+          CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+          if(![defaults boolForKey:@"random"]){
           if(!display.videoPath.empty()){
-              CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-              if(![defaults boolForKey:@"random"]){
+             
+              
                   [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
                                     onDisplays:@[@(displayID)]];
-              }else{
-                  [self startWallpaperWithPath:[self getRandomVideoFileFromFolder:[self getFolderPath]]
-                                    onDisplays:@[@(displayID)]];
-                  
-              }
+              
 
+           }
+          }else{
+              [self startWallpaperWithPath:[self getRandomVideoFileFromFolder:[self getFolderPath]]
+                                onDisplays:@[@(displayID)]];
+              
           }
       }
   }
   return self;
 }
 
+- (void) randomWallpapersLid{
+    
+    NSLog(@"Screen Aweaked!");
+    
+    for(Display display : displays){
+        
+        
+        if(!display.videoPath.empty()){
+            CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+            
+                [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
+                                  onDisplays:@[@(displayID)]];
+            
+         }
+        
+    }
+}
 
 - (NSString *)getRandomVideoFileFromFolder:(NSString *)folderPath {
     NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -167,7 +187,9 @@ static SaveSystem *saveSystem;
 }
 
 - (void)unlockHandle:(NSNotification *)note {
-  NSLog(@"Unlock detected");
+    if([[NSUserDefaults standardUserDefaults] floatForKey:@"random_lid"]){
+        [self randomWallpapersLid];
+    }
 }
 
 - (void)screensDidChange:(NSNotification *)note {

@@ -41,7 +41,7 @@
 @property(nonatomic, assign) BOOL screen_locked;
 @property(strong) NSTimer *checkTimer;
 
-@property(nonatomic, strong) NSString *scalingMode;
+@property(nonatomic, assign) NSInteger scalingMode;
 @property(nonatomic, strong) NSString *framePath;
 @property(nonatomic, assign) NSScreen *targetScreen;
 @property(nonatomic, assign) AVAsset *asset;
@@ -55,7 +55,7 @@
 
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath
-                  scalingMode:(NSString *)scalingMode
+                  scalingMode:(NSInteger)scalingMode
                  targetScreen:(NSScreen *)targetScreen;
 - (void)checkAndUpdatePlaybackState;
 @end
@@ -64,7 +64,7 @@
 
 - (instancetype)initWithVideo:(NSString *)videoPath
                   frameOutput:(NSString *)framePath
-                  scalingMode:(NSString *)scalingMode
+                  scalingMode:(NSInteger)scalingMode
                  targetScreen:(NSScreen *)targetScreen {
   self = [super init];
   if (self) {
@@ -80,7 +80,7 @@
     _autoPauseEnabled =
       [defaults boolForKey:@"pauseOnAppFocus"];
     _wasPlayingBeforeSleep = YES;
-    _scalingMode = scalingMode ?: @"stretch";
+    _scalingMode = scalingMode ?: 0;
     _framePath = framePath;
     _targetScreen = targetScreen;
     _targetPlaybackRate = 1.0f;
@@ -143,7 +143,7 @@
   return self;
 }
 - (void)setupWallpaperWithVideo:(NSString *)videoPath {
-  NSArray<NSScreen *> *screens = [NSScreen screens];
+  
   NSURL *videoURL = [NSURL fileURLWithPath:videoPath];
 
   NSRect visibleFrame = _targetScreen.frame;
@@ -175,39 +175,48 @@
   [window setIgnoresMouseEvents:YES];
 
   _asset = [AVAsset assetWithURL:videoURL];
-  AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:_asset];
+  AVPlayerItem *item = [[AVPlayerItem alloc] initWithAsset:_asset];
   AVQueuePlayer *player = [AVQueuePlayer queuePlayerWithItems:@[]];
   AVPlayerLooper *looper = [AVPlayerLooper playerLooperWithPlayer:player
                                                      templateItem:item];
 
   [window.contentView setWantsLayer:YES];
-  AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
+    AVPlayerLayer *layer = [AVPlayerLayer playerLayerWithPlayer:player];
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSInteger _scalingMode = [defaults integerForKey:@"scale_mode"];
 
-  if ([_scalingMode isEqualToString:@"fit"]) {
-    layer.videoGravity = AVLayerVideoGravityResizeAspect;
-  } else if ([_scalingMode isEqualToString:@"stretch"]) {
-    layer.videoGravity = AVLayerVideoGravityResize;
-  } else if ([_scalingMode isEqualToString:@"center"]) {
-    layer.videoGravity = AVLayerVideoGravityResizeAspect;
-  } else if ([_scalingMode isEqualToString:@"fill"]) {
+    switch (_scalingMode) {
 
-    layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
-  } else {
+      case 1: // fit
+        layer.videoGravity = AVLayerVideoGravityResizeAspect;
+        break;
 
-    layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+      case 2: // stretch
+        layer.videoGravity = AVLayerVideoGravityResize;
+        break;
 
-    layer.anchorPoint = CGPointMake(0.5, 0.5);
-    layer.position =
-        CGPointMake(CGRectGetMidX(visibleFrame), CGRectGetMidY(visibleFrame));
-  }
+      case 3: // center
+        layer.videoGravity = AVLayerVideoGravityResizeAspect;
+        layer.anchorPoint = CGPointMake(0.5, 0.5);
+        layer.position = CGPointMake(CGRectGetMidX(visibleFrame),
+                                     CGRectGetMidY(visibleFrame));
+        break;
 
-  layer.frame = window.contentView.bounds;
+      case 0: // fill
+      case 4: // height-fill (same behavior for video)
+        layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        break;
 
-  if ([_scalingMode isEqualToString:@"center"]) {
-    layer.position =
-        CGPointMake(CGRectGetMidX(visibleFrame), CGRectGetMidY(visibleFrame));
-  }
-
+      default:
+        layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        break;
+    }
+    if (_scalingMode != 3) {
+      layer.frame = window.contentView.bounds;
+      layer.autoresizingMask =
+          kCALayerWidthSizable | kCALayerHeightSizable;
+    }
+    
   layer.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
   layer.needsDisplayOnBoundsChange = NO;
   layer.actions = @{@"contents" : [NSNull null]};
@@ -729,7 +738,7 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   dispatch_once(&onceToken, ^{
     allowedBundleIDs = [NSSet setWithArray:@[
       @"com.apple.finder",
-      @"com.biosthusvill.LiveWallpaper"
+      @"com.thusvill.LiveWallpaper"
     ]];
   });
 
@@ -769,19 +778,7 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
 
   for (AVQueuePlayer *player in _players) {
     [player pause];
-    player.actionAtItemEnd = AVPlayerActionAtItemEndPause;
-    player.rate = 0.0f;
   }
-
-  CFTimeInterval pauseTime = CACurrentMediaTime();
-  for (AVPlayerLayer *layer in _playerLayers) {
-    CFTimeInterval layerPauseTime =
-        [layer convertTime:pauseTime fromLayer:nil];
-    layer.speed = 0.0f;
-    layer.timeOffset = layerPauseTime;
-    layer.beginTime = layerPauseTime;
-  }
-
   self.playbackPaused = YES;
   NSLog(@"[Daemon] Paused playback");
 }
@@ -966,7 +963,7 @@ int main(int argc, const char *argv[]) {
 
     NSString *videoPath = [NSString stringWithUTF8String:argv[1]];
     NSString *framePath = [NSString stringWithUTF8String:argv[2]];
-    NSString *scaleMode = [NSString stringWithUTF8String:argv[4]];
+      NSInteger scaleMode = (NSInteger)strtol(argv[4], NULL, 10);
     NSScreen *targetScreen = [NSScreen mainScreen];
     if (argc >= 6) {
       NSString *displayIDStr = [NSString stringWithUTF8String:argv[5]];

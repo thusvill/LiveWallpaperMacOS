@@ -20,7 +20,7 @@ import SwiftUI
 import AVFoundation
 import UniformTypeIdentifiers
 import Combine
-
+import AppKit
 
 
 
@@ -29,7 +29,11 @@ struct ContentView: View {
     @StateObject private var viewModel = WallpaperViewModel()
     @State private var showSettings = false
     @StateObject private var displayManager = DisplayManager()
-    @State private var selectedDisplays: Set<UInt32> = []
+    
+    
+    @Environment(\.dismiss) private var dismiss
+        static var didCloseOnLaunch = false
+
 
     var body: some View {
         VStack(spacing: 0) {
@@ -68,7 +72,7 @@ struct ContentView: View {
                 VideoGridView(
                     videos: viewModel.videos,
                     onVideoSelect: { video in
-                        viewModel.startWallpaper(video: video, displays: Array(selectedDisplays))
+                        viewModel.startWallpaper(video: video, displays: Array(displayManager.selectedDisplays))
                     }
                 )
                 .padding(.horizontal, 24)
@@ -77,7 +81,7 @@ struct ContentView: View {
                 
                 DisplayDockView(
                     displays: displayManager.displays,
-                            selectedDisplays: $selectedDisplays
+                    selectedDisplays: $displayManager.selectedDisplays
                         )
                         
                 .padding(.bottom, 20)
@@ -94,6 +98,12 @@ struct ContentView: View {
         .onAppear {
             viewModel.loadDisplays()
             viewModel.reloadContent()
+            if !Self.didCloseOnLaunch {
+                                Self.didCloseOnLaunch = true
+                                dismiss()
+                            }
+            
+            
         }
         
     }
@@ -219,6 +229,7 @@ struct QualityBadge: View {
 }
 class DisplayManager: ObservableObject {
     @Published var displays: [DisplayObjc] = []
+    @Published var selectedDisplays: Set<UInt32> = []
 
     init() {
         sharedEngine?.scanDisplays()
@@ -252,7 +263,10 @@ private func displayReconfigCallback(
     let manager = Unmanaged<DisplayManager>.fromOpaque(userInfo).takeUnretainedValue()
     DispatchQueue.main.async {
         manager.updateDisplays()
+        manager.selectedDisplays.removeAll()
+        
     }
+    
 }
 
 
@@ -439,6 +453,17 @@ struct SettingsView: View {
                         Toggle("", isOn: Binding(
                                 get: { UserDefaults.standard.bool(forKey: "random") },
                                 set: { UserDefaults.standard.set($0, forKey: "random") }
+                            ))
+                            .toggleStyle(.switch)
+
+                            
+                    }
+                    
+                    // Random Wallpaper on Weakup
+                    SettingRow(title: "Random Wallpaper on Lid Weakup (Required Application Restart)") {
+                        Toggle("", isOn: Binding(
+                                get: { UserDefaults.standard.bool(forKey: "random_lid") },
+                                set: { UserDefaults.standard.set($0, forKey: "random_lid") }
                             ))
                             .toggleStyle(.switch)
 

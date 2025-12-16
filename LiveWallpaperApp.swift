@@ -18,6 +18,8 @@
 
 import SwiftUI
 import AppKit
+import ApplicationServices
+import ServiceManagement
 
 let sharedEngine = WallpaperEngine.shared()
 
@@ -28,7 +30,8 @@ struct LiveWallpaperApp: App {
 
     var body: some Scene {
             Settings { EmptyView() }
-        }
+    }
+        
 }
 
 
@@ -75,6 +78,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
         
+        if !hasAccessibilityAccess() {
+            requestAccessibilityAccess()
+        }
+
+        
+        if !isLoginItemEnabled() {
+            setLoginItem(enabled: true)
+        }
+        
 
         
     }
@@ -94,5 +106,37 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func quit() {
         engine?.killAllDaemons() // cleanup
         NSApp.terminate(nil)
+    }
+}
+
+// MARK: Permission Access
+
+func hasAccessibilityAccess() -> Bool {
+    return AXIsProcessTrusted()
+}
+
+
+func requestAccessibilityAccess() {
+    let options: [String: Any] = [
+        kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true
+    ]
+    AXIsProcessTrustedWithOptions(options as CFDictionary)
+}
+
+
+
+
+func isLoginItemEnabled() -> Bool {
+    return UserDefaults.standard.bool(forKey: "LaunchAtLogin")
+}
+
+
+func setLoginItem(enabled: Bool) {
+    guard let bundleId = Bundle.main.bundleIdentifier else { return }
+    
+    if SMLoginItemSetEnabled(bundleId as CFString, enabled) {
+        UserDefaults.standard.set(enabled, forKey: "LaunchAtLogin")
+    } else {
+        print("❌ Failed to update login items")
     }
 }

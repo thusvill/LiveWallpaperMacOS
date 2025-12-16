@@ -37,6 +37,8 @@
 
 - (instancetype)init;
 
+- (void) randomWallpapersLid;
+
 - (void)startWallpaperWithPath:(NSString *)videoPath
                     onDisplays:(NSArray<NSNumber *> *)displayIDs;
 
