@@ -38,7 +38,18 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 
 > https://github.com/user-attachments/assets/3d82e07d-b6b9-4a7d-b6de-5dd05dff3128
 
+## Gallery
 
+> ![Application](./asset/application.png)
+> ![lockscreen](./asset/lockscreen.png)
+> ![settings](./asset/settings.png)
+<video src="./asset/sw.mp4" controls autoplay loop muted></video>
+> # Preformace
+> ![p1](./asset/preformance1.png)
+> ![p2](./asset/preformance2.png)
+> ![p3](./asset/preformance3.png)
+> # Multiple Display Support
+<video src="./asset/md.mp4" controls autoplay loop muted></video>
 
 <!-- ## Installation(Compile from source)
 - macOS 15+
