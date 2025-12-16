@@ -241,6 +241,8 @@
 
   NSLog(@"✅ Screen %@ visibleFrame: %@", _targetScreen,
         NSStringFromRect(visibleFrame));
+    
+    [self setStaticWallpaper];
 }
 
 - (void)screenLocked:(NSNotification *)note {

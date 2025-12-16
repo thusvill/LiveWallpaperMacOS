@@ -77,6 +77,8 @@
 
 - (NSArray *)getDisplays;
 
+-(void) terminateApplication;
+
 
 @property(nonatomic, assign) BOOL generatingImages;
 @property(nonatomic, assign) BOOL generatingThumbImages;

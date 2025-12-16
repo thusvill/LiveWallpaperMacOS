@@ -34,7 +34,7 @@ extern char **environ;
 #define QUALITY_BADGE_FONT_SIZE 48.0f
 
 static NSString *folderPath = nil;
-static SaveSystem *saveSystem;
+
 
 @implementation WallpaperEngine {
 @private
@@ -68,9 +68,10 @@ static SaveSystem *saveSystem;
     _wallpaperSemaphore = dispatch_semaphore_create(2);
     ScanDisplays();
       
-      [self killAllDaemons];
-    saveSystem = new SaveSystem();
-    displays = saveSystem->Load();
+    [self killAllDaemons];
+      usleep(2);
+    
+    displays = SaveSystem::Load();
     
       
       NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
@@ -79,18 +80,20 @@ static SaveSystem *saveSystem;
       
       for(Display display : displays){
           CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-          if(![defaults boolForKey:@"random"]){
-          if(!display.videoPath.empty()){
-             
-              
-                  [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
-                                    onDisplays:@[@(displayID)]];
-              
+          if([defaults boolForKey:@"random"]){
+              [self randomWallpapersLid];
+          }
+          else{
+              if(!display.videoPath.empty()){
+               
+                
+                    [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
+                                      onDisplays:@[@(displayID)]];
+                
 
-           }
-          }else{
-              [self startWallpaperWithPath:[self getRandomVideoFileFromFolder:[self getFolderPath]]
-                                onDisplays:@[@(displayID)]];
+              }
+              
+              
               
           }
       }
@@ -98,9 +101,11 @@ static SaveSystem *saveSystem;
   return self;
 }
 
+
+
 - (void) randomWallpapersLid{
     
-    NSLog(@"Screen Aweaked!");
+    NSLog(@"Applying Random Wallpapers!");
     
     for(Display display : displays){
         
@@ -108,7 +113,7 @@ static SaveSystem *saveSystem;
         if(!display.videoPath.empty()){
             CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
             
-                [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
+            [self startWallpaperWithPath:[self getRandomVideoFileFromFolder:[self getFolderPath]]
                                   onDisplays:@[@(displayID)]];
             
          }
@@ -166,12 +171,13 @@ static SaveSystem *saveSystem;
                 [self handleSpaceChange:note];
               }];
 
-  NSDistributedNotificationCenter *center =
-      [NSDistributedNotificationCenter defaultCenter];
-  [center addObserver:self
-             selector:@selector(unlockHandle:)
-                 name:@"com.apple.screenIsUnlocked"
-               object:nil];
+    [[NSWorkspace sharedWorkspace].notificationCenter addObserverForName:NSWorkspaceDidWakeNotification
+                                                                     object:nil
+                                                                      queue:[NSOperationQueue mainQueue]
+                                                                 usingBlock:^(NSNotification * _Nonnull note) {
+            
+            [self aweakHandle:note];
+        }];
 }
 
 - (void)removeNotifications {
@@ -186,8 +192,10 @@ static SaveSystem *saveSystem;
       CFSTR("com.live.wallpaper.spaceChanged"), NULL, NULL, true);
 }
 
-- (void)unlockHandle:(NSNotification *)note {
+- (void)aweakHandle:(NSNotification *)note {
+    
     if([[NSUserDefaults standardUserDefaults] floatForKey:@"random_lid"]){
+        NSLog(@"Screen Aweaked!");
         [self randomWallpapersLid];
     }
 }
@@ -1052,7 +1060,6 @@ static SaveSystem *saveSystem;
       CFNotificationCenterGetDarwinNotifyCenter(),
       CFSTR("com.live.wallpaper.terminate"), NULL, NULL, true);
 
-  saveSystem->Save(displays);
 }
 
 - (void)checkFolderPath {
@@ -1110,6 +1117,11 @@ static SaveSystem *saveSystem;
 - (void)selctFolder:(NSString* )path{
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     [defaults setObject:path forKey:@"WallpaperFolder"];
+}
+
+-(void) terminateApplication{
+    SaveSystem::Save(displays);
+    [self killAllDaemons];
 }
 
 @end

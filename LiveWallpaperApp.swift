@@ -104,7 +104,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // Quit the app completely
     @objc func quit() {
-        engine?.killAllDaemons() // cleanup
+        
+        engine?.terminateApplication()
         NSApp.terminate(nil)
     }
 }
