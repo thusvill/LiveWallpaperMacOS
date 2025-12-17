@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiveWallpaper — Stunning Live Wallpapers for Your Mac</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #fbbf24;
+            --primary-dark: #f59e0b;
+            --bg: #000000;
+            --bg-card: #0a0a0a;
+            --text: #ffffff;
+            --text-muted: #a1a1a1;
+            --border: rgba(251, 191, 36, 0.15);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow-x: hidden;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px) saturate(180%);
+            background: rgba(0, 0, 0, 0.72);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 16px 40px;
+        }
+
+        .nav-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), #facc15);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 0.95rem;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary);
+        }
+
+        .download-btn {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #000;
+            padding: 10px 24px;
+            border-radius: 20px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+
+        .download-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 30px rgba(251, 191, 36, 0.4);
+        }
+
+        /* Hero Section */
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            padding-top: 80px;
+        }
+
+        .hero-bg {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.1) 0%, transparent 70%);
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            text-align: center;
+            max-width: 900px;
+            padding: 0 20px;
+        }
+
+        .hero-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--primary);
+            margin-bottom: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: clamp(3rem, 8vw, 7rem);
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 30px;
+            letter-spacing: -3px;
+        }
+
+        .hero-gradient-text {
+            background: linear-gradient(135deg, var(--text) 0%, var(--primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-subtitle {
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            color: var(--text-muted);
+            margin-bottom: 50px;
+            font-weight: 400;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn-large {
+            padding: 18px 50px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-primary-large {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #000;
+            box-shadow: 0 20px 60px rgba(251, 191, 36, 0.3);
+        }
+
+        .btn-primary-large:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 25px 70px rgba(251, 191, 36, 0.5);
+        }
+
+        .btn-secondary-large {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text);
+            border: 2px solid var(--border);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-secondary-large:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--primary);
+        }
+
+        /* Features Grid */
+        .features {
+            padding: 150px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 80px;
+        }
+
+        .section-label {
+            font-size: 0.9rem;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        h2 {
+            font-size: clamp(2.5rem, 5vw, 5rem);
+            font-weight: 800;
+            line-height: 1.2;
+            letter-spacing: -2px;
+        }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 40px;
+            margin-top: 80px;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 50px 40px;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary), transparent);
+            transform: translateX(-100%);
+            transition: transform 0.6s ease;
+        }
+
+        .feature-card:hover::before {
+            transform: translateX(100%);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: 0 30px 80px rgba(251, 191, 36, 0.15);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 30px;
+        }
+
+        .feature-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+
+        .feature-card p {
+            color: var(--text-muted);
+            line-height: 1.8;
+            font-size: 1.05rem;
+        }
+
+        /* Performance Section */
+        .performance {
+            padding: 150px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .perf-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 40px;
+            margin-top: 80px;
+        }
+
+        .perf-card {
+            text-align: center;
+            padding: 60px 40px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .perf-card:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+            box-shadow: 0 20px 60px rgba(251, 191, 36, 0.2);
+        }
+
+        .perf-value {
+            font-size: 4.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), #facc15);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+            line-height: 1;
+        }
+
+        .perf-label {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        /* Gallery Section */
+        .gallery {
+            padding: 150px 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            gap: 30px;
+            margin-top: 80px;
+        }
+
+        .gallery-item {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            aspect-ratio: 16/9;
+            cursor: pointer;
+            transition: all 0.4s ease;
+            border: 1px solid var(--border);
+        }
+
+        .gallery-item:hover {
+            transform: scale(1.03);
+            border-color: var(--primary);
+            box-shadow: 0 30px 80px rgba(251, 191, 36, 0.3);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.4s ease;
+        }
+
+        .gallery-item:hover img {
+            transform: scale(1.1);
+        }
+
+        .gallery-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, transparent 50%, rgba(0, 0, 0, 0.8) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 30px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .gallery-item:hover .gallery-overlay {
+            opacity: 1;
+        }
+
+        .gallery-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .gallery-meta {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Installation Section */
+        .installation {
+            padding: 150px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .install-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            gap: 40px;
+            margin-top: 80px;
+        }
+
+        .install-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 50px 40px;
+            transition: all 0.3s ease;
+        }
+
+        .install-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: 0 30px 80px rgba(251, 191, 36, 0.15);
+        }
+
+        .install-card h3 {
+            font-size: 1.8rem;
+            margin-bottom: 20px;
+            font-weight: 700;
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.6);
+            padding: 25px;
+            border-radius: 12px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            border: 1px solid var(--border);
+            margin: 20px 0;
+            color: var(--primary);
+            line-height: 1.6;
+        }
+
+        /* Stats Section */
+        .stats {
+            padding: 150px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            margin-top: 80px;
+        }
+
+        .stat-card {
+            text-align: center;
+            padding: 60px 40px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+            box-shadow: 0 20px 60px rgba(251, 191, 36, 0.2);
+        }
+
+        .stat-icon {
+            font-size: 3.5rem;
+            margin-bottom: 30px;
+        }
+
+        .stat-number {
+            font-size: 4rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--primary), #facc15);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 15px;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 1.1rem;
+            color: var(--text-muted);
+        }
+
+        /* Contributors */
+        .contributors {
+            padding: 150px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .contributors-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            margin-top: 80px;
+        }
+
+        .contributor-card {
+            text-align: center;
+            padding: 40px 30px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .contributor-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 60px rgba(251, 191, 36, 0.2);
+        }
+
+        .contributor-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin: 0 auto 25px;
+            border: 3px solid var(--primary);
+            transition: all 0.3s ease;
+        }
+
+        .contributor-card:hover .contributor-avatar {
+            transform: scale(1.1);
+            box-shadow: 0 10px 30px rgba(251, 191, 36, 0.5);
+        }
+
+        .contributor-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .contributor-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.95rem;
+        }
+
+        /* Releases */
+        .releases {
+            padding: 150px 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .releases-list {
+            display: grid;
+            gap: 30px;
+            margin-top: 80px;
+        }
+
+        .release-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 50px;
+            transition: all 0.3s ease;
+        }
+
+        .release-card:hover {
+            border-color: var(--primary);
+            transform: translateX(10px);
+            box-shadow: 0 20px 60px rgba(251, 191, 36, 0.15);
+        }
+
+        .release-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .release-version {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .release-date {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+        }
+
+        .release-body {
+            color: var(--text-muted);
+            line-height: 1.8;
+            margin-top: 20px;
+        }
+
+        /* Footer */
+        footer {
+            padding: 80px 20px 40px;
+            max-width: 1400px;
+            margin: 0 auto;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+
+        .footer-section h4 {
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+            color: var(--primary);
+        }
+
+        .footer-section a {
+            display: block;
+            color: var(--text-muted);
+            text-decoration: none;
+            margin-bottom: 12px;
+            transition: color 0.3s ease;
+        }
+
+        .footer-section a:hover {
+            color: var(--primary);
+        }
+
+        .footer-bottom {
+            text-align: center;
+            padding-top: 40px;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .fade-in {
+            animation: fadeInUp 0.6s ease forwards;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                padding: 16px 20px;
+            }
+
+            .nav-links {
+                gap: 20px;
+            }
+
+            .hero, .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
+                padding: 100px 20px;
+            }
+
+            .feature-grid, .install-grid, .gallery-grid {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 2.5rem;
+            }
+
+            h2 {
+                font-size: 2rem;
+            }
+
+            .btn-large {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-content">
+            <a href="#" class="logo"><img src="src/icon_dark.png" width="60"></a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#installation">Installation</a>
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank">GitHub</a>
+                <a href="#releases" class="download-btn">Download</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-bg"></div>
+        <div class="hero-content fade-in">
+            <div><img src="src/icon_dark.png" width="500"></div>
+<br>
+            <div class="hero-badge">✨ Open Source • macOS 15+</div>
+            <h1>
+                <span class="hero-gradient-text">Stunning Live</span><br>
+                Wallpapers for Your Mac
+            </h1>
+            <p class="hero-subtitle">Transform your desktop with beautiful video wallpapers.<br>Free, open-source, and optimized for performance.</p>
+            <div class="hero-cta">
+                <a href="#releases" class="btn-large btn-primary-large">
+                    <span>⬇</span> Download Free
+                </a>
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS" class="btn-large btn-secondary-large" target="_blank">
+                    <span><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"/></span> Star on GitHub
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="section-header">
+            <div class="section-label">FEATURES</div>
+            <h2>Made to feel native.</h2>
+        </div>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/imac.png" alt="imac"/></div>
+                <h3>Multiple Display Support</h3>
+                <p>Separate configurations for each display. Your wallpapers adapt seamlessly across all your screens.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/lightning-bolt.png" alt="lightning-bolt"/></div>
+                <h3>Optimized Performance</h3>
+                <p>Under 20MB RAM usage with ~3% CPU load. Automatically pauses on lock screen to save battery.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/ruler.png" alt="ruler"/></div>
+                <h3>Video Scaling Options</h3>
+                <p>Fill, fit, or stretch your wallpapers. Support for .mp4 and .mov formats up to 4K resolution.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/vertical-settings-mixer.png" alt="vertical-settings-mixer"/></div>
+                <h3>Volume Controls</h3>
+                <p>Adjust audio levels for each wallpaper or mute completely. Full control over your experience.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/shuffle.png" alt="shuffle"/></div>
+                <h3>Random Wallpapers</h3>
+                <p>Set random wallpapers on startup or screen unlock. Keep your desktop fresh and surprising.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass/48/mac-client.png" alt="mac-client"/></div>
+                <h3>Native macOS Feel</h3>
+                <p>Built with SwiftUI. Liquid glass effects that look and feel like they're part of macOS.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Performance Section -->
+    <section id="performance" class="performance">
+        <div class="section-header">
+            <div class="section-label">PERFORMANCE</div>
+            <h2>Battery & CPU Usage</h2>
+        </div>
+        <div class="perf-grid">
+            <div class="perf-card">
+                <div class="perf-value">&lt;20MB</div>
+                <div class="perf-label">RAM Usage</div>
+            </div>
+            <div class="perf-card">
+                <div class="perf-value">~0.3%</div>
+                <div class="perf-label">CPU Load</div>
+            </div>
+            <div class="perf-card">
+                <div class="perf-value">&lt;0.1</div>
+                <div class="perf-label">Energy Impact</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Gallery Section -->
+    <!-- <section id="gallery" class="gallery">
+        <div class="section-header">
+            <div class="section-label">GALLERY</div>
+            <h2>Visual Excellence</h2>
+        </div>
+        <div class="gallery-grid">
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1600&q=80" alt="Aurora Borealis">
+                <div class="gallery-overlay">
+                    <div class="gallery-title">Aurora Borealis</div>
+                    <div class="gallery-meta">3840x2160 • Nature</div>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1519681393784-d120267933ba?w=1600&q=80" alt="Mountain Vista">
+                <div class="gallery-overlay">
+                    <div class="gallery-title">Mountain Vista</div>
+                    <div class="gallery-meta">2560x1440 • Landscape</div>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1600&q=80" alt="Snowy Peaks">
+                <div class="gallery-overlay">
+                    <div class="gallery-title">Snowy Peaks</div>
+                    <div class="gallery-meta">3840x2160 • Mountain</div>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?w=1600&q=80" alt="Ocean Waves">
+                <div class="gallery-overlay">
+                    <div class="gallery-title">Ocean Waves</div>
+                    <div class="gallery-meta">1920x1080 • Seascape</div>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1600&q=80" alt="Forest Trail">
+                <div class="gallery-overlay">
+                    <div class="gallery-title">Forest Trail</div>
+                    <div class="gallery-meta">2560x1440 • Nature</div>
+                </div>
+            </div>
+            <div class="gallery-item">
+                <img src="https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=1600&q=80" alt="City Lights">
+                <div class="gallery-overlay">
+                    <div class="gallery-title">City Lights</div>
+                    <div class="gallery-meta">3840x2160 • Urban</div>
+                </div>
+            </div>
+        </div>
+    </section> -->
+
+    <!-- Installation Section -->
+    <section id="installation" class="installation">
+        <div class="section-header">
+            <div class="section-label">GET STARTED</div>
+            <h2>Installation</h2>
+        </div>
+        <div class="install-grid">
+            <div class="install-card">
+                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/beer.png" alt="beer"/> Homebrew</h3>
+                <p>Quick install via package manager</p>
+                <div class="code-block">brew tap thusvill/livewallpaper && brew install --cask livewallpaper</div>
+            </div>
+            <div class="install-card">
+                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/hdd.png" alt="hdd"/> DMG Install</h3>
+                
+                <a href="#releases" class="btn-large btn-primary-large">
+                    <span>⬇</span> Download DMG
+                </a>
+                <br><br>
+                <p>Download and drag to Applications</p>
+                <div class="code-block">xattr -d com.apple.quarantine /Applications/LiveWallpaper.app</div>
+            </div>
+            <div class="install-card">
+                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/hammer.png" alt="hammer"/> Build Source (Objective C++ branch)</h3>
+                <p>Compile yourself</p>
+                <div class="code-block">git clone https://github.com/thusvill/LiveWallpaperMacOS.git
+cd LiveWallpaperMacOS && mkdir build
+cmake .. && make -j$(sysctl -n hw.ncpu)</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Releases Section -->
+    <section id="releases" class="releases">
+        <div class="section-header">
+            <div class="section-label">DOWNLOADS</div>
+            <h2>Latest Releases</h2>
+        </div>
+        <div id="releases-container" class="releases-list">
+            <div class="loading">Loading releases...</div>
+        </div>
+        <br>
+        <div><a href="#releases" class="btn-large btn-primary-large">
+                    <span>⬇</span> More releases
+                </a></div>
+    </section>
+
+    <!-- Contributors Section -->
+    <section id="contributors" class="contributors">
+        <div class="section-header">
+            <div class="section-label">COMMUNITY</div>
+            <h2>Contributors</h2>
+        </div>
+        <div id="contributors-container" class="contributors-grid">
+            <div class="loading">Loading contributors...</div>
+        </div>
+    </section>
+
+    
+     <function_calls>
+<invoke name="artifacts">
+
+<parameter name="old_str">    <!-- Stats Section --></parameter>
+<parameter name="new_str">    <!-- Stats Section -->
+    <section id="stats" class="stats">
+        <div class="section-header">
+            <div class="section-label">GITHUB</div>
+            <h2>Open Source Stats</h2>
+        </div>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon"><img width="50" height="50" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"/></div>
+                <div id="stars-count" class="stat-number">526</div>
+                <div class="stat-label">Stars</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass/48/code-fork.png" alt="code-fork"/></div>
+                <div id="forks-count" class="stat-number">19</div>
+                <div class="stat-label">Forks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><img width="50" height="50" src="https://img.icons8.com/liquid-glass-color/32/visible.png" alt="visible"/></div>
+                <div id="watchers-count" class="stat-number">5</div>
+                <div class="stat-label">Watchers</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h4>Product</h4>
+                <a href="#features">Features</a>
+                <a href="#performance">Performance</a>
+                <a href="#gallery">Gallery</a>
+                <a href="#releases">Download</a>
+            </div>
+            <div class="footer-section">
+                <h4>Resources</h4>
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank">GitHub</a>
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS/issues" target="_blank">Issues</a>
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS/discussions" target="_blank">Discussions</a>
+            </div>
+            <div class="footer-section">
+                <h4>Community</h4>
+                <a href="#contributors">Contributors</a>
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS/stargazers" target="_blank">Stargazers</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            © 2025 LiveWallpaper. Open source and free forever.
+        </div>
+    </footer>
+
+    <script>
+        // Fetch GitHub data
+        async function fetchGitHubData() {
+            try {
+                const corsProxy = 'https://api.allorigins.win/raw?url=';
+                
+                const repoUrl = encodeURIComponent('https://api.github.com/repos/thusvill/LiveWallpaperMacOS');
+                const repoResponse = await fetch(corsProxy + repoUrl);
+                const repoData = await repoResponse.json();
+                
+                document.getElementById('stars-count').textContent = repoData.stargazers_count || '526';
+                document.getElementById('forks-count').textContent = repoData.forks_count || '19';
+                document.getElementById('watchers-count').textContent = repoData.subscribers_count || '5';
+
+                const releasesUrl = encodeURIComponent('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases');
+                const releasesResponse = await fetch(corsProxy + releasesUrl);
+                const releases = await releasesResponse.json();
+                
+                const releasesContainer = document.getElementById('releases-container');
+                releasesContainer.innerHTML = '';
+                
+                (releases.slice(0, 5) || []).forEach(release => {
+                    const date = new Date(release.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                    });
+                    
+                    const downloadAsset = release.assets?.find(asset => 
+                        asset.name.endsWith('.dmg') || asset.name.endsWith('.zip')
+                    );
+                    
+                    const releaseCard = document.createElement('div');
+                    releaseCard.className = 'release-card';
+                    releaseCard.innerHTML = `
+                        <div class="release-header">
+                            <div>
+                                <div class="release-version">${release.name || release.tag_name}</div>
+                                <div class="release-date">${date}</div>
+                            </div>
+                            ${downloadAsset ? `
+                                <a href="${downloadAsset.browser_download_url}" class="btn-large btn-primary-large">
+                                    Download (${(downloadAsset.size / 1024 / 1024).toFixed(1)} MB)
+                                </a>
+                            ` : ''}
+                        </div>
+                        <div class="release-body">
+                            ${release.body ? release.body.split('\n').slice(0, 4).join('<br>') : 'No description'}
+                        </div>
+                    `;
+                    releasesContainer.appendChild(releaseCard);
+                });
+
+                const contributorsUrl = encodeURIComponent('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/contributors');
+                const contributorsResponse = await fetch(corsProxy + contributorsUrl);
+                const contributors = await contributorsResponse.json();
+                
+                const contributorsContainer = document.getElementById('contributors-container');
+                contributorsContainer.innerHTML = '';
+                
+                (contributors || []).forEach(contributor => {
+                    const contributorCard = document.createElement('div');
+                    contributorCard.className = 'contributor-card';
+                    contributorCard.innerHTML = `
+                        <img src="${contributor.avatar_url}" alt="${contributor.login}" class="contributor-avatar">
+                        <div class="contributor-name">${contributor.login}</div>
+                        <a href="${contributor.html_url}" target="_blank" class="contributor-link">
+                            ${contributor.contributions} contributions
+                        </a>
+                    `;
+                    contributorsContainer.appendChild(contributorCard);
+                });
+
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('releases-container').innerHTML = `
+                    <div class="release-card">
+                        <h3>View on GitHub</h3>
+                        <p style="color: var(--text-muted); margin: 20px 0;">Visit our repository for releases</p>
+                        <a href="https://github.com/thusvill/LiveWallpaperMacOS/releases" class="btn-large btn-primary-large" target="_blank">
+                            Go to Releases
+                        </a>
+                    </div>
+                `;
+                document.getElementById('contributors-container').innerHTML = `
+                    <div class="contributor-card">
+                        <p>Visit GitHub to see contributors</p>
+                        <a href="https://github.com/thusvill/LiveWallpaperMacOS/graphs/contributors" class="contributor-link" target="_blank">
+                            View on GitHub
+                        </a>
+                    </div>
+                `;
+            }
+        }
+
+        fetchGitHubData();
+
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('section').forEach(section => {
+            section.style.opacity = '0';
+            section.style.transform = 'translateY(30px)';
+            section.style.transition = 'all 0.6s ease';
+            observer.observe(section);
+        });
+    </script>
+</body>
+</html></parameter>
