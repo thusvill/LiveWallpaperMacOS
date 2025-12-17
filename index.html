@@ -1081,25 +1081,30 @@ cmake .. && make -j$(sysctl -n hw.ncpu)</div>
     </footer>
 
     <script>
-       async function safeFetch(url, useProxy = true) {
-    const corsProxy = 'https://api.allorigins.win/raw?url=';
-    try {
-        const res = await fetch((useProxy ? corsProxy : '') + encodeURIComponent(url));
-        return await res.json();
-    } catch {
-        return null;
-    }
+
+
+    async function fetchJSON(url) {
+    const proxy = 'https://api.allorigins.win/get?url=';
+    const res = await fetch(proxy + encodeURIComponent(url));
+    const data = await res.json();
+    return JSON.parse(data.contents);
 }
+
+
 
 async function fetchGitHubData() {
     try {
-        const repoData = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS');
+        const repoData = await fetchJSON(
+    'https://api.github.com/repos/thusvill/LiveWallpaperMacOS'
+);
         
         document.getElementById('stars-count').textContent = repoData?.stargazers_count ?? '...';
         document.getElementById('forks-count').textContent = repoData?.forks_count ?? '...';
         document.getElementById('watchers-count').textContent = repoData?.subscribers_count ?? '...';
 
-        let releases = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases', false);
+        const releases = await fetchJSON(
+    'https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases'
+);
 
         // fallback to proxy only if GitHub API direct worked poorly
         if (!Array.isArray(releases)) {
@@ -1150,7 +1155,9 @@ async function fetchGitHubData() {
             `;
         }
 
-        const contributors = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/contributors', true);
+        const contributors = await fetchJSON(
+    'https://api.github.com/repos/thusvill/LiveWallpaperMacOS/contributors'
+);
         const contributorsContainer = document.getElementById('contributors-container');
         contributorsContainer.innerHTML = '';
 
