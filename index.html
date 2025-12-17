@@ -1081,101 +1081,100 @@ cmake .. && make -j$(sysctl -n hw.ncpu)</div>
     </footer>
 
     <script>
-        // Fetch GitHub data
-        async function fetchGitHubData() {
-            try {
-                const corsProxy = 'https://api.allorigins.win/raw?url=';
-                
-                const repoUrl = encodeURIComponent('https://api.github.com/repos/thusvill/LiveWallpaperMacOS');
-                const repoResponse = await fetch(corsProxy + repoUrl);
-                const repoData = await repoResponse.json();
-                
-                document.getElementById('stars-count').textContent = repoData.stargazers_count || 'Fetching...';
-                document.getElementById('forks-count').textContent = repoData.forks_count || 'Fetching...';
-                document.getElementById('watchers-count').textContent = repoData.subscribers_count || 'Fetching...';
+       async function safeFetch(url, useProxy = true) {
+    const corsProxy = 'https://api.allorigins.win/raw?url=';
+    try {
+        const res = await fetch((useProxy ? corsProxy : '') + encodeURIComponent(url));
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
 
-                const releasesUrl = encodeURIComponent('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases');
-                const releasesResponse = await fetch(corsProxy + releasesUrl);
-                const releases = await releasesResponse.json();
-                
-                const releasesContainer = document.getElementById('releases-container');
-                releasesContainer.innerHTML = '';
-                
-                (releases.slice(0, 5) || []).forEach(release => {
-                    const date = new Date(release.published_at).toLocaleDateString('en-US', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric'
-                    });
-                    
-                    const downloadAsset = release.assets?.find(asset => 
-                        asset.name.endsWith('.dmg') || asset.name.endsWith('.zip')
-                    );
-                    
-                    const releaseCard = document.createElement('div');
-                    releaseCard.className = 'release-card';
-                    releaseCard.innerHTML = `
-                        <div class="release-header">
-                            <div>
-                                <div class="release-version">${release.name || release.tag_name}</div>
-                                <div class="release-date">${date}</div>
-                            </div>
-                            ${downloadAsset ? `
-                                <a href="${downloadAsset.browser_download_url}" class="btn-large btn-primary-large">
-                                    Download (${(downloadAsset.size / 1024 / 1024).toFixed(1)} MB)
-                                </a>
-                            ` : ''}
-                        </div>
-                        <div class="release-body">
-                            ${release.body ? release.body.split('\n').slice(0, 4).join('<br>') : 'No description'}
-                        </div>
-                    `;
-                    releasesContainer.appendChild(releaseCard);
-                });
+async function fetchGitHubData() {
+    try {
+        const repoData = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS');
+        
+        document.getElementById('stars-count').textContent = repoData?.stargazers_count ?? '...';
+        document.getElementById('forks-count').textContent = repoData?.forks_count ?? '...';
+        document.getElementById('watchers-count').textContent = repoData?.subscribers_count ?? '...';
 
-                const contributorsUrl = encodeURIComponent('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/contributors');
-                const contributorsResponse = await fetch(corsProxy + contributorsUrl);
-                const contributors = await contributorsResponse.json();
-                
-                const contributorsContainer = document.getElementById('contributors-container');
-                contributorsContainer.innerHTML = '';
-                
-                (contributors || []).forEach(contributor => {
-                    const contributorCard = document.createElement('div');
-                    contributorCard.className = 'contributor-card';
-                    contributorCard.innerHTML = `
-                        <img src="${contributor.avatar_url}" alt="${contributor.login}" class="contributor-avatar">
-                        <div class="contributor-name">${contributor.login}</div>
-                        <a href="${contributor.html_url}" target="_blank" class="contributor-link">
-                            ${contributor.contributions} contributions
-                        </a>
-                    `;
-                    contributorsContainer.appendChild(contributorCard);
-                });
+        let releases = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases', false);
 
-            } catch (error) {
-                console.error('Error:', error);
-                document.getElementById('releases-container').innerHTML = `
-                    <div class="release-card">
-                        <h3>View on GitHub</h3>
-                        <p style="color: var(--text-muted); margin: 20px 0;">Visit our repository for releases</p>
-                        <a href="https://github.com/thusvill/LiveWallpaperMacOS/releases" class="btn-large btn-primary-large" target="_blank">
-                            Go to Releases
-                        </a>
-                    </div>
-                `;
-                document.getElementById('contributors-container').innerHTML = `
-                    <div class="contributor-card">
-                        <p>Visit GitHub to see contributors</p>
-                        <a href="https://github.com/thusvill/LiveWallpaperMacOS/graphs/contributors" class="contributor-link" target="_blank">
-                            View on GitHub
-                        </a>
-                    </div>
-                `;
-            }
+        // fallback to proxy only if GitHub API direct worked poorly
+        if (!Array.isArray(releases)) {
+            releases = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases', true);
         }
 
-        fetchGitHubData();
+        const releasesContainer = document.getElementById('releases-container');
+        releasesContainer.innerHTML = '';
+
+        if (Array.isArray(releases) && releases.length) {
+            releases.slice(0, 5).forEach(release => {
+                const date = new Date(release.published_at).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+
+                const downloadAsset = release.assets?.find(asset =>
+                    asset.name.endsWith('.dmg') || asset.name.endsWith('.zip')
+                );
+
+                const releaseCard = document.createElement('div');
+                releaseCard.className = 'release-card';
+                releaseCard.innerHTML = `
+                    <div class="release-header">
+                        <div>
+                            <div class="release-version">${release.name || release.tag_name}</div>
+                            <div class="release-date">${date}</div>
+                        </div>
+                        ${downloadAsset ? `
+                            <a href="${downloadAsset.browser_download_url}"
+                               class="btn-large btn-primary-large">
+                                Download (${(downloadAsset.size / 1024 / 1024).toFixed(1)} MB)
+                            </a>
+                        ` : ''}
+                    </div>
+                    <div class="release-body">
+                        ${release.body ? release.body.split('\n').slice(0, 4).join('<br>') : 'No description'}
+                    </div>
+                `;
+                releasesContainer.appendChild(releaseCard);
+            });
+        } else {
+            releasesContainer.innerHTML = `
+                <div class="release-card">
+                    <h3>No releases available</h3>
+                </div>
+            `;
+        }
+
+        const contributors = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/contributors', true);
+        const contributorsContainer = document.getElementById('contributors-container');
+        contributorsContainer.innerHTML = '';
+
+        (contributors || []).forEach(contributor => {
+            const contributorCard = document.createElement('div');
+            contributorCard.className = 'contributor-card';
+            contributorCard.innerHTML = `
+                <img src="${contributor.avatar_url}" alt="${contributor.login}" class="contributor-avatar">
+                <div class="contributor-name">${contributor.login}</div>
+                <a href="${contributor.html_url}" target="_blank" class="contributor-link">
+                    ${contributor.contributions} contributions
+                </a>
+            `;
+            contributorsContainer.appendChild(contributorCard);
+        });
+
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+fetchGitHubData();
+
+       
 
         // Screenshots Slideshow
         let currentSlide = 0;
