@@ -44,7 +44,9 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 > ![lockscreen](./asset/lockscreen.png)
 > ![settings](./asset/settings.png)
 
-> https://github.com/user-attachments/assets/cfa6a5f5-3753-4c59-b2ab-e5d46fc96e72
+> https://github.com/user-attachments/assets/36fb169e-b7cc-4489-9459-dab07c8dd2c6
+
+
 
 
 > # Preformace
@@ -53,7 +55,10 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 > ![p3](./asset/preformance3.png)
 > # Multiple Display Support
 
-> https://github.com/user-attachments/assets/42117f50-262d-4f0f-8379-154db18d035d
+> https://github.com/user-attachments/assets/9575873c-79e6-4eba-a7a5-9408b2cc4ed0
+
+
+
 
 
 
