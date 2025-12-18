@@ -41,7 +41,10 @@ Click the OpenInFinder button and it'll open a folder, you can place wallpapers 
 ## Gallery
 
 > ![Application](./asset/application.png)
+
+> ## This is a static image, Currently this app doesn't support live wallpapers on lock screen.
 > ![lockscreen](./asset/lockscreen.png)
+
 > ![settings](./asset/settings.png)
 
 > https://github.com/user-attachments/assets/cfa6a5f5-3753-4c59-b2ab-e5d46fc96e72
