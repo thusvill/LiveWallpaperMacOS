@@ -328,12 +328,12 @@ NSString *getFolderPath(void) {
 - (BOOL)enableAppAsLoginItem {
   NSString *agentPath = [NSHomeDirectory()
       stringByAppendingPathComponent:
-          @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+          @"Library/LaunchAgents/com.thusvill.LiveWallpaper.plist"];
 
   NSString *execPath = [[NSBundle mainBundle] executablePath];
 
   NSDictionary *plist = @{
-    @"Label" : @"com.biosthusvill.LiveWallpaper",
+    @"Label" : @"com.thusvill.LiveWallpaper",
     @"ProgramArguments" : @[ execPath ],
     @"RunAtLoad" : @YES,
     @"KeepAlive" : @NO
@@ -1364,7 +1364,7 @@ NSTextField *CreateLabel(NSString *string) {
   {
     NSString *agentPath = [NSHomeDirectory()
         stringByAppendingPathComponent:
-            @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+            @"Library/LaunchAgents/com.thusvill.LiveWallpaper.plist"];
     if (![[NSFileManager defaultManager] fileExistsAtPath:agentPath]) {
       LineModule *permissions = [[LineModule alloc] initWithFrame:NSZeroRect];
       permissions.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1480,20 +1480,10 @@ NSTextField *CreateLabel(NSString *string) {
       CFSTR("com.live.wallpaper.volumeChanged"), NULL, NULL, true);
 }
 
-- (BOOL)isFirstLaunch {
-  NSString *const kFirstLaunchKey = @"HasLaunchedOnce";
-  if (![[NSUserDefaults standardUserDefaults] boolForKey:kFirstLaunchKey]) {
-    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kFirstLaunchKey];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    return YES;
-  }
-  return NO;
-}
-
 - (void)promptForLoginItem {
   NSString *agentPath = [NSHomeDirectory()
       stringByAppendingPathComponent:
-          @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+          @"Library/LaunchAgents/com.thusvill.LiveWallpaper.plist"];
   BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:agentPath];
   if (!exists) {
     NSAlert *alert = [[NSAlert alloc] init];
@@ -2282,7 +2272,7 @@ void generateStaticWallpapersForFolderCallback(CFNotificationCenterRef center,
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   [[NSUserDefaults standardUserDefaults]
-      registerDefaults:@{ @"pauseOnAppFocus" : @YES }];
+      registerDefaults:@{@"pauseOnAppFocus" : @YES}];
 
   CFNotificationCenterAddObserver(
       CFNotificationCenterGetDarwinNotifyCenter(),

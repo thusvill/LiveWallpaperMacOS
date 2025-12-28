@@ -12,7 +12,7 @@
 <string>livewall</string>
 
   <key>CFBundleIdentifier</key>
-  <string>com.biosthusvill.LiveWallpaper</string>
+  <string>com.thusvill.LiveWallpaper</string>
 
   <key>CFBundleName</key>
   <string>LiveWallpaper</string>

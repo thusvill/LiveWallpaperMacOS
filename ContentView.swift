@@ -71,6 +71,7 @@ struct ContentView: View {
                 
                 VideoGridView(
                     videos: viewModel.videos,
+                    viewModel: viewModel,
                     onVideoSelect: { video in
                         viewModel.startWallpaper(video: video, displays: Array(displayManager.selectedDisplays))
                     }
@@ -98,7 +99,8 @@ struct ContentView: View {
         .onAppear {
             viewModel.loadDisplays()
             viewModel.reloadContent()
-            if !Self.didCloseOnLaunch {
+            
+            if (!Self.didCloseOnLaunch && !(sharedEngine?.isFirstLaunch())!) {
                                 Self.didCloseOnLaunch = true
                                 dismiss()
                             }
@@ -137,25 +139,51 @@ struct ToolbarView: View {
 // MARK: - Video Grid View
 struct VideoGridView: View {
     let videos: [VideoItem]
+    let viewModel: WallpaperViewModel
     let onVideoSelect: (VideoItem) -> Void
     
     private let columns = [GridItem(.adaptive(minimum: 250, maximum: 250), spacing: 2)]
     
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(videos) { video in
-                    VideoThumbnailButton(video: video) {
-                        onVideoSelect(video)
-                    }.id(video.id)
+            if videos.isEmpty {
+                Button {
+                    
+                    let panel = NSOpenPanel()
+                    panel.canChooseFiles = false
+                    panel.canChooseDirectories = true
+                    panel.allowsMultipleSelection = false
+                    panel.title = "Select Wallpaper Folder"
+                    panel.prompt = "Choose"
+                    
+                    if panel.runModal() == .OK, let url = panel.url {
+                        viewModel.folderPath = url.path
+                        sharedEngine?.selctFolder(url.path())
+                        viewModel.reloadContent()
+                    }
+                    
+                } label: {
+                    Text("Select a wallpaper folder")
+                        .font(.system(size: 14, weight: .medium))
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
                 }
+                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity, minHeight: 200)
+            } else {
+                LazyVGrid(columns: columns, spacing: 2) {
+                    ForEach(videos) { video in
+                        VideoThumbnailButton(video: video) {
+                            onVideoSelect(video)
+                        }
+                        .id(video.id)
+                    }
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: columns)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: columns)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            
         }
-       
     }
         
 }
@@ -486,6 +514,10 @@ struct SettingsView: View {
                         HStack {
                             Slider(value: $viewModel.volume, in: 0...100, step: 1)
                                 .frame(width: 200)
+                                .onChange(of: viewModel.volume) { newValue in
+                                    sharedEngine?.updateVolume(newValue)
+                                }
+                                
                             
                             Text("\(Int(viewModel.volume))%")
                                 .frame(width: 60, alignment: .leading)
@@ -695,6 +727,7 @@ class WallpaperViewModel: ObservableObject {
                 let thumbPath = (self.engine.thumbnailCachePath() as NSString?)?.appendingPathComponent("\(base).png") ?? ""
                 
                 var item = VideoItem(filename: f, path: full, thumbnailPath: thumbPath)
+                
 //                item.quality = self.engine.videoQualityBadge(for: URL(fileURLWithPath: full))
                 self.engine.videoQualityBadge(for: URL(fileURLWithPath: full)){badge in item.quality = badge}
                 return item

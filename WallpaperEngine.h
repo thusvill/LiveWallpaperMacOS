@@ -77,7 +77,11 @@
 
 - (NSArray *)getDisplays;
 
+-(void)updateVolume:(double) value;
+
 -(void) terminateApplication;
+
+-(BOOL)isFirstLaunch;
 
 
 @property(nonatomic, assign) BOOL generatingImages;

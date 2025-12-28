@@ -35,7 +35,6 @@ extern char **environ;
 
 static NSString *folderPath = nil;
 
-
 @implementation WallpaperEngine {
 @private
   dispatch_queue_t _wallpaperQueue;
@@ -67,90 +66,80 @@ static NSString *folderPath = nil;
 
     _wallpaperSemaphore = dispatch_semaphore_create(2);
     ScanDisplays();
-      
-    [self killAllDaemons];
-      usleep(2);
-    
-    displays = SaveSystem::Load();
-    
-      
-      NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-      
-      
-      
-      for(Display display : displays){
-          CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-          if([defaults boolForKey:@"random"]){
-              [self randomWallpapersLid];
-          }
-          else{
-              if(!display.videoPath.empty()){
-               
-                
-                    [self startWallpaperWithPath:[NSString stringWithUTF8String:display.videoPath.c_str()]
-                                      onDisplays:@[@(displayID)]];
-                
 
-              }
-              
-              
-              
-          }
+    [self killAllDaemons];
+    usleep(2);
+
+    displays = SaveSystem::Load();
+
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+
+    for (Display display : displays) {
+      CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+      if ([defaults boolForKey:@"random"]) {
+        [self randomWallpapersLid];
+      } else {
+        if (!display.videoPath.empty()) {
+
+          [self
+              startWallpaperWithPath:[NSString
+                                         stringWithUTF8String:display.videoPath
+                                                                  .c_str()]
+                          onDisplays:@[ @(displayID) ]];
+        }
       }
+    }
   }
   return self;
 }
 
+- (void)randomWallpapersLid {
 
+  NSLog(@"Applying Random Wallpapers!");
 
-- (void) randomWallpapersLid{
-    
-    NSLog(@"Applying Random Wallpapers!");
-    
-    for(Display display : displays){
-        
-        
-        if(!display.videoPath.empty()){
-            CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-            
-            [self startWallpaperWithPath:[self getRandomVideoFileFromFolder:[self getFolderPath]]
-                                  onDisplays:@[@(displayID)]];
-            
-         }
-        
+  for (Display display : displays) {
+
+    if (!display.videoPath.empty()) {
+      CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+
+      [self startWallpaperWithPath:
+                [self getRandomVideoFileFromFolder:[self getFolderPath]]
+                        onDisplays:@[ @(displayID) ]];
     }
+  }
 }
 
 - (NSString *)getRandomVideoFileFromFolder:(NSString *)folderPath {
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSError *error = nil;
-    
-    NSArray<NSString *> *allFiles = [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
-    
-    if (error) {
-        NSLog(@"Error reading directory: %@", error.localizedDescription);
-        return nil;
-    }
-    
-    NSMutableArray<NSString *> *videoFiles = [NSMutableArray array];
-    
-    for (NSString *fileName in allFiles) {
-        NSString *fileExtension = [[fileName pathExtension] lowercaseString];
-        
-        if ([fileExtension isEqualToString:@"mp4"] || [fileExtension isEqualToString:@"mov"]) {
-            NSString *fullPath = [folderPath stringByAppendingPathComponent:fileName];
-            [videoFiles addObject:fullPath];
-        }
-    }
-    
-    if (videoFiles.count == 0) {
-        return nil;
-    }
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSError *error = nil;
 
-    NSUInteger randomIndex = arc4random_uniform((uint32_t)videoFiles.count);
-    return videoFiles[randomIndex];
+  NSArray<NSString *> *allFiles =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
+
+  if (error) {
+    NSLog(@"Error reading directory: %@", error.localizedDescription);
+    return nil;
+  }
+
+  NSMutableArray<NSString *> *videoFiles = [NSMutableArray array];
+
+  for (NSString *fileName in allFiles) {
+    NSString *fileExtension = [[fileName pathExtension] lowercaseString];
+
+    if ([fileExtension isEqualToString:@"mp4"] ||
+        [fileExtension isEqualToString:@"mov"]) {
+      NSString *fullPath = [folderPath stringByAppendingPathComponent:fileName];
+      [videoFiles addObject:fullPath];
+    }
+  }
+
+  if (videoFiles.count == 0) {
+    return nil;
+  }
+
+  NSUInteger randomIndex = arc4random_uniform((uint32_t)videoFiles.count);
+  return videoFiles[randomIndex];
 }
-
 
 - (void)dealloc {
   [self removeNotifications];
@@ -171,13 +160,13 @@ static NSString *folderPath = nil;
                 [self handleSpaceChange:note];
               }];
 
-    [[NSWorkspace sharedWorkspace].notificationCenter addObserverForName:NSWorkspaceDidWakeNotification
-                                                                     object:nil
-                                                                      queue:[NSOperationQueue mainQueue]
-                                                                 usingBlock:^(NSNotification * _Nonnull note) {
-            
-            [self aweakHandle:note];
-        }];
+  [[NSWorkspace sharedWorkspace].notificationCenter
+      addObserverForName:NSWorkspaceDidWakeNotification
+                  object:nil
+                   queue:[NSOperationQueue mainQueue]
+              usingBlock:^(NSNotification *_Nonnull note) {
+                [self aweakHandle:note];
+              }];
 }
 
 - (void)removeNotifications {
@@ -193,11 +182,11 @@ static NSString *folderPath = nil;
 }
 
 - (void)aweakHandle:(NSNotification *)note {
-    
-    if([[NSUserDefaults standardUserDefaults] floatForKey:@"random_lid"]){
-        NSLog(@"Screen Aweaked!");
-        [self randomWallpapersLid];
-    }
+
+  if ([[NSUserDefaults standardUserDefaults] floatForKey:@"random_lid"]) {
+    NSLog(@"Screen Aweaked!");
+    [self randomWallpapersLid];
+  }
 }
 
 - (void)screensDidChange:(NSNotification *)note {
@@ -791,57 +780,53 @@ static NSString *folderPath = nil;
 }
 
 - (void)videoQualityBadgeForURL:(NSURL *)url
-                     completion:(void (^)(NSString *badge))completion
-{
-    AVAsset *asset = [AVAsset assetWithURL:url];
+                     completion:(void (^)(NSString *badge))completion {
+  AVAsset *asset = [AVAsset assetWithURL:url];
 
-    if (@available(macOS 15.0, *)) {
+  if (@available(macOS 15.0, *)) {
 
-        [asset loadTracksWithMediaType:AVMediaTypeVideo
-                     completionHandler:^(NSArray<AVAssetTrack *> *tracks,
-                                         NSError *error) {
+    [asset loadTracksWithMediaType:AVMediaTypeVideo
+                 completionHandler:^(NSArray<AVAssetTrack *> *tracks,
+                                     NSError *error) {
+                   NSString *badge = @"";
 
-            NSString *badge = @"";
+                   if (!error && tracks.count > 0) {
+                     AVAssetTrack *videoTrack = tracks.firstObject;
+                     badge = [self badgeFromVideoTrack:videoTrack];
+                   }
+                   dispatch_async(dispatch_get_main_queue(), ^{
+                     completion(badge);
+                   });
+                 }];
 
-            if (!error && tracks.count > 0) {
-                AVAssetTrack *videoTrack = tracks.firstObject;
-                badge = [self badgeFromVideoTrack:videoTrack];
-            }
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(badge);
-            });
-        }];
-
-    } else {
+  } else {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        AVAssetTrack *videoTrack =
-            [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+    AVAssetTrack *videoTrack =
+        [[asset tracksWithMediaType:AVMediaTypeVideo] firstObject];
 #pragma clang diagnostic pop
 
-        NSString *badge = videoTrack ? [self badgeFromVideoTrack:videoTrack] : @"";
-        completion(badge);
-    }
+    NSString *badge = videoTrack ? [self badgeFromVideoTrack:videoTrack] : @"";
+    completion(badge);
+  }
 }
 
-- (NSString *)badgeFromVideoTrack:(AVAssetTrack *)videoTrack
-{
-    CGSize resolution =
-        CGSizeApplyAffineTransform(videoTrack.naturalSize,
-                                   videoTrack.preferredTransform);
+- (NSString *)badgeFromVideoTrack:(AVAssetTrack *)videoTrack {
+  CGSize resolution = CGSizeApplyAffineTransform(videoTrack.naturalSize,
+                                                 videoTrack.preferredTransform);
 
-    resolution.width = fabs(resolution.width);
-    resolution.height = fabs(resolution.height);
+  resolution.width = fabs(resolution.width);
+  resolution.height = fabs(resolution.height);
 
-    if (resolution.width >= 3840 || resolution.height >= 2160)
-        return @"4K";
-    if (resolution.width >= 1920 || resolution.height >= 1080)
-        return @"HD";
-    if (resolution.width >= 1280 || resolution.height >= 720)
-        return @"SD";
+  if (resolution.width >= 3840 || resolution.height >= 2160)
+    return @"4K";
+  if (resolution.width >= 1920 || resolution.height >= 1080)
+    return @"HD";
+  if (resolution.width >= 1280 || resolution.height >= 720)
+    return @"SD";
 
-    return @"";
+  return @"";
 }
 
 - (NSImage *)image:(NSImage *)image withBadge:(NSString *)badge {
@@ -887,12 +872,12 @@ static NSString *folderPath = nil;
 - (BOOL)enableAppAsLoginItem {
   NSString *agentPath = [NSHomeDirectory()
       stringByAppendingPathComponent:
-          @"Library/LaunchAgents/com.biosthusvill.LiveWallpaper.plist"];
+          @"Library/LaunchAgents/com.thusvill.LiveWallpaper.plist"];
 
   NSString *execPath = [[NSBundle mainBundle] executablePath];
 
   NSDictionary *plist = @{
-    @"Label" : @"com.biosthusvill.LiveWallpaper",
+    @"Label" : @"com.thusvill.LiveWallpaper",
     @"ProgramArguments" : @[ execPath ],
     @"RunAtLoad" : @YES,
     @"KeepAlive" : @NO
@@ -1059,7 +1044,6 @@ static NSString *folderPath = nil;
   CFNotificationCenterPostNotification(
       CFNotificationCenterGetDarwinNotifyCenter(),
       CFSTR("com.live.wallpaper.terminate"), NULL, NULL, true);
-
 }
 
 - (void)checkFolderPath {
@@ -1114,15 +1098,44 @@ static NSString *folderPath = nil;
   return result;
 }
 
-- (void)selctFolder:(NSString* )path{
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    [defaults setObject:path forKey:@"WallpaperFolder"];
+- (void)selctFolder:(NSString *)path {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  [defaults setObject:path forKey:@"WallpaperFolder"];
 }
 
--(void) terminateApplication{
-    SaveSystem::Save(displays);
-    [self killAllDaemons];
+- (void)terminateApplication {
+  SaveSystem::Save(displays);
+  [self killAllDaemons];
 }
+
+- (BOOL)isFirstLaunch {
+  NSString *const kFirstLaunchKey = @"HasLaunchedOnce";
+  if (![[NSUserDefaults standardUserDefaults] boolForKey:kFirstLaunchKey]) {
+    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kFirstLaunchKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    return YES;
+  }
+  return NO;
+}
+
+-(void)updateVolume:(double)value{
+    float f_percentage = value;
+    float volume = f_percentage / 100.0f;
+
+      NSLog(@"Slider: %.0f%% → volume: %.2f", f_percentage, volume);
+
+
+      [[NSUserDefaults standardUserDefaults] setFloat:f_percentage
+                                               forKey:@"wallpapervolumeprecentage"];
+      [[NSUserDefaults standardUserDefaults] setFloat:volume
+                                               forKey:@"wallpapervolume"];
+      [[NSUserDefaults standardUserDefaults] synchronize];
+
+      CFNotificationCenterPostNotification(
+          CFNotificationCenterGetDarwinNotifyCenter(),
+          CFSTR("com.live.wallpaper.volumeChanged"), NULL, NULL, true);
+    }
+
 
 @end
 
