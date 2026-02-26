@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LiveWallpaper For MacOS</title>
-    <link rel="icon" type="image/png" href="src/icon_new.png">
+    <link rel="icon" type="image/png" href="src/icon_light.png">
     <style>
         * {
             margin: 0;
@@ -37,11 +37,11 @@
             top: 0;
             left: 0;
             right: 0;
-            z-index: 100;
+            z-index: 300;
             backdrop-filter: blur(20px) saturate(180%);
             background: rgba(0, 0, 0, 0.72);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 16px 40px;
+            padding: 12px 20px;
         }
 
         .nav-content {
@@ -50,6 +50,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
         }
 
         .logo {
@@ -60,12 +61,20 @@
             -webkit-text-fill-color: transparent;
             text-decoration: none;
             flex-shrink: 0;
+            line-height: 1;
+        }
+
+        .logo img {
+            display: block;
+            max-width: 52px;
+            height: auto;
         }
 
         .nav-links {
             display: flex;
             gap: 40px;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .nav-links a {
@@ -92,6 +101,7 @@
             text-decoration: none;
             font-size: 0.95rem;
             white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .download-btn:hover {
@@ -99,16 +109,19 @@
             box-shadow: 0 10px 30px rgba(251, 191, 36, 0.4);
         }
 
-        /* Hamburger */
+        /* Hamburger — always on top of everything */
         .hamburger {
             display: none;
             flex-direction: column;
             gap: 5px;
             cursor: pointer;
-            padding: 4px;
+            padding: 8px;
             background: none;
             border: none;
-            z-index: 200;
+            z-index: 400;   /* above nav (300) and mobile-nav (350) */
+            position: relative;
+            flex-shrink: 0;
+            touch-action: manipulation;
         }
 
         .hamburger span {
@@ -118,13 +131,14 @@
             background: var(--text);
             border-radius: 2px;
             transition: all 0.3s ease;
+            pointer-events: none;
         }
 
         .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
-        .hamburger.open span:nth-child(2) { opacity: 0; }
+        .hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
         .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-        /* Mobile nav drawer */
+        /* Mobile nav drawer — sits between nav and hamburger */
         .mobile-nav {
             display: none;
             position: fixed;
@@ -132,14 +146,15 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0,0,0,0.97);
-            z-index: 99;
+            background: rgba(0, 0, 0, 0.97);
+            z-index: 350;   /* above nav (300), below hamburger (400) */
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 36px;
-            padding: 100px 40px 40px;
+            gap: 32px;
+            padding: 100px 40px 60px;
             backdrop-filter: blur(20px);
+            overflow-y: auto;
         }
 
         .mobile-nav.open {
@@ -154,7 +169,8 @@
             transition: color 0.3s ease;
         }
 
-        .mobile-nav a:hover {
+        .mobile-nav a:hover,
+        .mobile-nav a:active {
             color: var(--primary);
         }
 
@@ -202,11 +218,12 @@
             z-index: 2;
             text-align: center;
             max-width: 900px;
-            padding: 40px 20px;
+            width: 100%;
+            padding: 40px 16px;
         }
 
         .hero-logo img {
-            width: min(500px, 80vw);
+            width: min(500px, 75vw);
             height: auto;
         }
 
@@ -236,11 +253,14 @@
             -webkit-text-fill-color: transparent;
         }
 
+        .subtitle-break { display: inline; }
+
         .hero-subtitle {
-            font-size: clamp(1rem, 3vw, 1.8rem);
+            font-size: clamp(0.95rem, 3vw, 1.8rem);
             color: var(--text-muted);
             margin-bottom: 50px;
             font-weight: 400;
+            word-wrap: break-word;
         }
 
         .hero-cta {
@@ -251,9 +271,9 @@
         }
 
         .btn-large {
-            padding: 18px 50px;
+            padding: 16px 40px;
             border-radius: 50px;
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
             border: none;
@@ -262,6 +282,8 @@
             display: inline-flex;
             align-items: center;
             gap: 10px;
+            white-space: nowrap;
+            max-width: 100%;
         }
 
         .btn-primary-large {
@@ -317,8 +339,8 @@
 
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(350px, 100%), 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+            gap: 30px;
             margin-top: 80px;
         }
 
@@ -380,8 +402,8 @@
 
         .perf-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+            gap: 30px;
             margin-top: 80px;
         }
 
@@ -518,9 +540,9 @@
 
         .gallery-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr));
-            gap: 30px;
-            margin-top: 80px;
+            grid-template-columns: repeat(auto-fill, minmax(min(400px, 100%), 1fr));
+            gap: 24px;
+            margin-top: 60px;
         }
 
         .gallery-item {
@@ -586,8 +608,8 @@
 
         .install-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
+            gap: 30px;
             margin-top: 80px;
         }
 
@@ -606,23 +628,26 @@
         }
 
         .install-card h3 {
-            font-size: 1.6rem;
+            font-size: clamp(1.1rem, 2.5vw, 1.6rem);
             margin-bottom: 20px;
             font-weight: 700;
+            word-break: break-word;
         }
 
         .code-block {
             background: rgba(0, 0, 0, 0.6);
-            padding: 20px;
+            padding: 16px;
             border-radius: 12px;
             font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             overflow-x: auto;
             border: 1px solid var(--border);
             margin: 20px 0;
             color: var(--primary);
             line-height: 1.6;
-            word-break: break-all;
+            white-space: pre;
+            max-width: 100%;
+            display: block;
         }
 
         /* ── Stats Section ── */
@@ -634,8 +659,8 @@
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+            gap: 30px;
             margin-top: 80px;
         }
 
@@ -683,8 +708,8 @@
 
         .contributors-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 30px;
+            grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
+            gap: 20px;
             margin-top: 80px;
         }
 
@@ -788,7 +813,7 @@
         .release-assets {
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 10px;
             margin-top: 16px;
         }
 
@@ -796,15 +821,18 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 22px;
+            padding: 10px 18px;
             border-radius: 30px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             font-weight: 600;
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: #000;
             text-decoration: none;
             transition: all 0.3s ease;
             white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .release-asset-btn:hover {
@@ -822,8 +850,8 @@
 
         .footer-content {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
+            gap: 32px;
             margin-bottom: 60px;
         }
 
@@ -877,118 +905,110 @@
 
         /* ── Responsive: tablet (≤1024px) ── */
         @media (max-width: 1024px) {
+            nav { padding: 12px 24px; }
+
             .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
-                padding: 120px 20px;
+                padding: 100px 20px;
             }
         }
 
         /* ── Responsive: mobile (≤768px) ── */
         @media (max-width: 768px) {
-            nav {
-                padding: 14px 20px;
-            }
+            nav { padding: 10px 16px; }
 
-            .nav-links {
-                display: none;
-            }
+            .nav-links { display: none !important; }
 
-            .hamburger {
-                display: flex;
-            }
+            .hamburger { display: flex !important; }
 
             .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
-                padding: 80px 16px;
+                padding: 70px 14px;
             }
 
-            .section-header {
-                margin-bottom: 40px;
-            }
+            .section-header { margin-bottom: 32px; }
 
-            h2 {
-                letter-spacing: -1px;
-            }
+            h2 { letter-spacing: -0.5px; }
 
-            .feature-grid, .install-grid, .gallery-grid, .perf-grid, .stats-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .feature-card, .install-card, .perf-card, .stat-card, .contributor-card {
-                padding: 36px 28px;
-            }
-
-            .btn-large {
-                width: 100%;
-                justify-content: center;
-                padding: 16px 30px;
-                font-size: 1rem;
-            }
-
-            .screenshots-slideshow {
-                height: clamp(180px, 55vw, 320px);
-                margin-top: 40px;
-            }
-
-            .slideshow-nav {
-                width: 38px;
-                height: 38px;
-                font-size: 1.1rem;
-            }
-
-            .slideshow-nav.prev { left: 8px; }
-            .slideshow-nav.next { right: 8px; }
-
-            .release-card {
+            .feature-card, .install-card, .perf-card, .stat-card {
                 padding: 28px 20px;
             }
 
-            .release-version {
-                font-size: 1.4rem;
+            .contributor-card { padding: 20px 12px; }
+
+            .screenshots-slideshow {
+                height: clamp(160px, 52vw, 300px);
+                margin-top: 32px;
             }
+
+            .slideshow-nav {
+                width: 36px;
+                height: 36px;
+                font-size: 1rem;
+            }
+            .slideshow-nav.prev { left: 6px; }
+            .slideshow-nav.next { right: 6px; }
+
+            .release-card { padding: 22px 16px; }
+
+            .release-version { font-size: 1.3rem; }
 
             .release-header {
                 flex-direction: column;
                 align-items: flex-start;
             }
 
-            .contributors-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 20px;
-            }
-
-            .contributor-card {
-                padding: 24px 16px;
-            }
-
-            .footer-content {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 28px;
-            }
-
-            .code-block {
-                font-size: 0.75rem;
-                word-break: break-all;
-            }
+            .code-block { font-size: 0.72rem; }
         }
 
         /* ── Responsive: small mobile (≤480px) ── */
         @media (max-width: 480px) {
+            nav { padding: 8px 12px; }
+
+            .logo img { max-width: 40px; }
+
+            h1 { font-size: clamp(1.8rem, 9vw, 3rem); letter-spacing: -0.5px; }
+
+            .hero-subtitle br, .subtitle-break { display: none; }
+
             .hero-cta {
                 flex-direction: column;
                 align-items: stretch;
+                gap: 12px;
             }
+
+            .hero-cta .btn-large {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .btn-large { padding: 14px 24px; font-size: 0.9rem; }
 
             .contributors-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
 
-            .footer-content {
-                grid-template-columns: 1fr;
+            .release-asset-btn {
+                width: 100%;
+                justify-content: center;
             }
 
-            .slide-dot {
-                width: 8px;
-                height: 8px;
+            .slideshow-controls { padding: 8px 14px; gap: 8px; }
+
+            .slide-dot { width: 8px; height: 8px; }
+        }
+
+        /* ── Responsive: tiny (≤360px) ── */
+        @media (max-width: 360px) {
+            nav { padding: 8px 10px; }
+
+            .logo img { max-width: 36px; }
+
+            .contributors-grid {
+                grid-template-columns: 1fr 1fr;
             }
+
+            .contributor-card { padding: 16px 8px; }
+
+            .contributor-avatar { width: 56px; height: 56px; }
         }
     </style>
 </head>
@@ -996,7 +1016,7 @@
     <!-- Navigation -->
     <nav>
         <div class="nav-content">
-            <a href="#" class="logo"><img src="src/icon_new.png" width="60" alt="LiveWallpaper"></a>
+            <a href="#" class="logo"><img src="src/icon_dark.png" width="60" alt="LiveWallpaper"></a>
             <div class="nav-links">
                 <a href="#features">Features</a>
                 <a href="#installation">Installation</a>
@@ -1025,14 +1045,14 @@
         <div class="hero-video-overlay"></div>
         <div class="hero-bg"></div>
         <div class="hero-content fade-in">
-            <div class="hero-logo"><img src="src/icon_new.png" alt="LiveWallpaper Logo"></div>
+            <div class="hero-logo"><img src="src/icon_dark.png" alt="LiveWallpaper Logo"></div>
             <br>
-            <div class="hero-badge">✨ Open Source • macOS 14+</div>
+            <div class="hero-badge"><b>Open Source • MacOS 14+</b></div>
             <h1>
                 <span class="hero-gradient-text">Stunning Live</span><br>
                 Wallpapers for Your Mac
             </h1>
-            <p class="hero-subtitle">Transform your desktop with beautiful video wallpapers.<br>Free, open-source, and optimized for performance.</p>
+            <p class="hero-subtitle">Transform your desktop with beautiful video wallpapers.<span class="subtitle-break"><br></span> Free, open-source, and optimized for performance.</p>
             <div class="hero-cta">
                 <a href="#releases" class="btn-large btn-primary-large">
                     <span>⬇</span> Download Free
