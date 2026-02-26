@@ -31,7 +31,7 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* Navigation */
+        /* ── Navigation ── */
         nav {
             position: fixed;
             top: 0;
@@ -59,6 +59,7 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             text-decoration: none;
+            flex-shrink: 0;
         }
 
         .nav-links {
@@ -72,6 +73,7 @@
             text-decoration: none;
             font-size: 0.95rem;
             transition: color 0.3s ease;
+            white-space: nowrap;
         }
 
         .nav-links a:hover {
@@ -89,6 +91,7 @@
             transition: all 0.3s ease;
             text-decoration: none;
             font-size: 0.95rem;
+            white-space: nowrap;
         }
 
         .download-btn:hover {
@@ -96,9 +99,73 @@
             box-shadow: 0 10px 30px rgba(251, 191, 36, 0.4);
         }
 
-        /* Hero Section */
+        /* Hamburger */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            padding: 4px;
+            background: none;
+            border: none;
+            z-index: 200;
+        }
+
+        .hamburger span {
+            display: block;
+            width: 24px;
+            height: 2px;
+            background: var(--text);
+            border-radius: 2px;
+            transition: all 0.3s ease;
+        }
+
+        .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+        .hamburger.open span:nth-child(2) { opacity: 0; }
+        .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+        /* Mobile nav drawer */
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.97);
+            z-index: 99;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 36px;
+            padding: 100px 40px 40px;
+            backdrop-filter: blur(20px);
+        }
+
+        .mobile-nav.open {
+            display: flex;
+        }
+
+        .mobile-nav a {
+            color: var(--text);
+            text-decoration: none;
+            font-size: 1.6rem;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .mobile-nav a:hover {
+            color: var(--primary);
+        }
+
+        .mobile-nav .download-btn {
+            font-size: 1.1rem;
+            padding: 14px 40px;
+        }
+
+        /* ── Hero Section ── */
         .hero {
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -135,7 +202,12 @@
             z-index: 2;
             text-align: center;
             max-width: 900px;
-            padding: 0 20px;
+            padding: 40px 20px;
+        }
+
+        .hero-logo img {
+            width: min(500px, 80vw);
+            height: auto;
         }
 
         .hero-badge {
@@ -151,11 +223,11 @@
         }
 
         h1 {
-            font-size: clamp(3rem, 8vw, 7rem);
+            font-size: clamp(2.2rem, 8vw, 7rem);
             font-weight: 800;
             line-height: 1.1;
             margin-bottom: 30px;
-            letter-spacing: -3px;
+            letter-spacing: clamp(-1px, -0.04em, -3px);
         }
 
         .hero-gradient-text {
@@ -165,7 +237,7 @@
         }
 
         .hero-subtitle {
-            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            font-size: clamp(1rem, 3vw, 1.8rem);
             color: var(--text-muted);
             margin-bottom: 50px;
             font-weight: 400;
@@ -215,7 +287,7 @@
             border-color: var(--primary);
         }
 
-        /* Features Grid */
+        /* ── Features Grid ── */
         .features {
             padding: 150px 20px;
             max-width: 1400px;
@@ -237,7 +309,7 @@
         }
 
         h2 {
-            font-size: clamp(2.5rem, 5vw, 5rem);
+            font-size: clamp(2rem, 5vw, 5rem);
             font-weight: 800;
             line-height: 1.2;
             letter-spacing: -2px;
@@ -245,7 +317,7 @@
 
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(350px, 100%), 1fr));
             gap: 40px;
             margin-top: 80px;
         }
@@ -288,7 +360,7 @@
         }
 
         .feature-card h3 {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             margin-bottom: 15px;
             font-weight: 700;
         }
@@ -299,7 +371,7 @@
             font-size: 1.05rem;
         }
 
-        /* Performance Section */
+        /* ── Performance Section ── */
         .performance {
             padding: 150px 20px;
             max-width: 1400px;
@@ -308,7 +380,7 @@
 
         .perf-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
             gap: 40px;
             margin-top: 80px;
         }
@@ -329,7 +401,7 @@
         }
 
         .perf-value {
-            font-size: 4.5rem;
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
             font-weight: 800;
             background: linear-gradient(135deg, var(--primary), #facc15);
             -webkit-background-clip: text;
@@ -344,7 +416,7 @@
             font-weight: 500;
         }
 
-        /* Gallery Section */
+        /* ── Gallery Section ── */
         .gallery {
             padding: 150px 20px;
             max-width: 1600px;
@@ -355,7 +427,7 @@
             position: relative;
             max-width: 1200px;
             margin: 80px auto 0;
-            height: 600px;
+            height: clamp(220px, 45vw, 600px);
             border-radius: 20px;
             overflow: hidden;
             border: 1px solid var(--border);
@@ -382,21 +454,21 @@
 
         .slideshow-controls {
             position: absolute;
-            bottom: 30px;
+            bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
             gap: 12px;
             z-index: 10;
             background: rgba(0, 0, 0, 0.7);
-            padding: 15px 25px;
+            padding: 12px 20px;
             border-radius: 50px;
             backdrop-filter: blur(10px);
         }
 
         .slide-dot {
-            width: 12px;
-            height: 12px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: rgba(255, 255, 255, 0.3);
             cursor: pointer;
@@ -432,6 +504,7 @@
             backdrop-filter: blur(10px);
             z-index: 10;
             font-size: 1.5rem;
+            user-select: none;
         }
 
         .slideshow-nav:hover {
@@ -440,17 +513,12 @@
             transform: translateY(-50%) scale(1.1);
         }
 
-        .slideshow-nav.prev {
-            left: 20px;
-        }
-
-        .slideshow-nav.next {
-            right: 20px;
-        }
+        .slideshow-nav.prev { left: 20px; }
+        .slideshow-nav.next { right: 20px; }
 
         .gallery-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr));
             gap: 30px;
             margin-top: 80px;
         }
@@ -509,7 +577,7 @@
             color: var(--text-muted);
         }
 
-        /* Installation Section */
+        /* ── Installation Section ── */
         .installation {
             padding: 150px 20px;
             max-width: 1400px;
@@ -518,7 +586,7 @@
 
         .install-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
             gap: 40px;
             margin-top: 80px;
         }
@@ -538,25 +606,26 @@
         }
 
         .install-card h3 {
-            font-size: 1.8rem;
+            font-size: 1.6rem;
             margin-bottom: 20px;
             font-weight: 700;
         }
 
         .code-block {
             background: rgba(0, 0, 0, 0.6);
-            padding: 25px;
+            padding: 20px;
             border-radius: 12px;
             font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             overflow-x: auto;
             border: 1px solid var(--border);
             margin: 20px 0;
             color: var(--primary);
             line-height: 1.6;
+            word-break: break-all;
         }
 
-        /* Stats Section */
+        /* ── Stats Section ── */
         .stats {
             padding: 150px 20px;
             max-width: 1400px;
@@ -565,7 +634,7 @@
 
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
             gap: 40px;
             margin-top: 80px;
         }
@@ -591,7 +660,7 @@
         }
 
         .stat-number {
-            font-size: 4rem;
+            font-size: clamp(2.5rem, 5vw, 4rem);
             font-weight: 800;
             background: linear-gradient(135deg, var(--primary), #facc15);
             -webkit-background-clip: text;
@@ -605,7 +674,7 @@
             color: var(--text-muted);
         }
 
-        /* Contributors */
+        /* ── Contributors ── */
         .contributors {
             padding: 150px 20px;
             max-width: 1400px;
@@ -614,8 +683,8 @@
 
         .contributors-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 40px;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 30px;
             margin-top: 80px;
         }
 
@@ -635,12 +704,13 @@
         }
 
         .contributor-avatar {
-            width: 100px;
-            height: 100px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
-            margin: 0 auto 25px;
+            margin: 0 auto 20px;
             border: 3px solid var(--primary);
             transition: all 0.3s ease;
+            display: block;
         }
 
         .contributor-card:hover .contributor-avatar {
@@ -649,18 +719,19 @@
         }
 
         .contributor-name {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: 600;
             margin-bottom: 8px;
+            word-break: break-word;
         }
 
         .contributor-link {
             color: var(--primary);
             text-decoration: none;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
         }
 
-        /* Releases */
+        /* ── Releases ── */
         .releases {
             padding: 150px 20px;
             max-width: 1400px;
@@ -677,13 +748,13 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 24px;
-            padding: 50px;
+            padding: 40px;
             transition: all 0.3s ease;
         }
 
         .release-card:hover {
             border-color: var(--primary);
-            transform: translateX(10px);
+            transform: translateX(6px);
             box-shadow: 0 20px 60px rgba(251, 191, 36, 0.15);
         }
 
@@ -693,11 +764,11 @@
             align-items: center;
             margin-bottom: 25px;
             flex-wrap: wrap;
-            gap: 20px;
+            gap: 16px;
         }
 
         .release-version {
-            font-size: 2rem;
+            font-size: 1.8rem;
             font-weight: 700;
             color: var(--primary);
         }
@@ -711,9 +782,37 @@
             color: var(--text-muted);
             line-height: 1.8;
             margin-top: 20px;
+            font-size: 0.95rem;
         }
 
-        /* Footer */
+        .release-assets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .release-asset-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 22px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #000;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+
+        .release-asset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(251, 191, 36, 0.4);
+        }
+
+        /* ── Footer ── */
         footer {
             padding: 80px 20px 40px;
             max-width: 1400px;
@@ -723,7 +822,7 @@
 
         .footer-content {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
             gap: 40px;
             margin-bottom: 60px;
         }
@@ -754,77 +853,141 @@
             font-size: 0.9rem;
         }
 
-        /* Loading */
-        .loading {
+        /* ── Loading / Error states ── */
+        .loading, .error-msg {
             text-align: center;
-            padding: 60px;
+            padding: 60px 20px;
             color: var(--text-muted);
             font-size: 1.1rem;
         }
 
-        /* Animations */
+        .error-msg {
+            color: #f87171;
+        }
+
+        /* ── Animations ── */
         @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(30px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
         .fade-in {
             animation: fadeInUp 0.6s ease forwards;
         }
 
-        /* Responsive */
+        /* ── Responsive: tablet (≤1024px) ── */
+        @media (max-width: 1024px) {
+            .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
+                padding: 120px 20px;
+            }
+        }
+
+        /* ── Responsive: mobile (≤768px) ── */
         @media (max-width: 768px) {
             nav {
-                padding: 16px 20px;
+                padding: 14px 20px;
             }
 
             .nav-links {
-                gap: 20px;
+                display: none;
             }
 
-            .hero, .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
-                padding: 100px 20px;
+            .hamburger {
+                display: flex;
             }
 
-            .feature-grid, .install-grid, .gallery-grid {
-                grid-template-columns: 1fr;
+            .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
+                padding: 80px 16px;
             }
 
-            h1 {
-                font-size: 2.5rem;
+            .section-header {
+                margin-bottom: 40px;
             }
 
             h2 {
-                font-size: 2rem;
+                letter-spacing: -1px;
+            }
+
+            .feature-grid, .install-grid, .gallery-grid, .perf-grid, .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-card, .install-card, .perf-card, .stat-card, .contributor-card {
+                padding: 36px 28px;
             }
 
             .btn-large {
                 width: 100%;
                 justify-content: center;
+                padding: 16px 30px;
+                font-size: 1rem;
             }
 
             .screenshots-slideshow {
-                height: 400px;
+                height: clamp(180px, 55vw, 320px);
+                margin-top: 40px;
             }
 
             .slideshow-nav {
-                width: 40px;
-                height: 40px;
-                font-size: 1.2rem;
+                width: 38px;
+                height: 38px;
+                font-size: 1.1rem;
             }
 
-            .slideshow-nav.prev {
-                left: 10px;
+            .slideshow-nav.prev { left: 8px; }
+            .slideshow-nav.next { right: 8px; }
+
+            .release-card {
+                padding: 28px 20px;
             }
 
-            .slideshow-nav.next {
-                right: 10px;
+            .release-version {
+                font-size: 1.4rem;
+            }
+
+            .release-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .contributors-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+            }
+
+            .contributor-card {
+                padding: 24px 16px;
+            }
+
+            .footer-content {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 28px;
+            }
+
+            .code-block {
+                font-size: 0.75rem;
+                word-break: break-all;
+            }
+        }
+
+        /* ── Responsive: small mobile (≤480px) ── */
+        @media (max-width: 480px) {
+            .hero-cta {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .contributors-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .footer-content {
+                grid-template-columns: 1fr;
+            }
+
+            .slide-dot {
+                width: 8px;
+                height: 8px;
             }
         }
     </style>
@@ -833,15 +996,26 @@
     <!-- Navigation -->
     <nav>
         <div class="nav-content">
-            <a href="#" class="logo"><img src="src/icon_dark.png" width="60"></a>
+            <a href="#" class="logo"><img src="src/icon_dark.png" width="60" alt="LiveWallpaper"></a>
             <div class="nav-links">
                 <a href="#features">Features</a>
                 <a href="#installation">Installation</a>
                 <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank">GitHub</a>
                 <a href="#releases" class="download-btn">Download</a>
             </div>
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+                <span></span><span></span><span></span>
+            </button>
         </div>
     </nav>
+
+    <!-- Mobile Nav Drawer -->
+    <div class="mobile-nav" id="mobile-nav">
+        <a href="#features" class="mobile-nav-link">Features</a>
+        <a href="#installation" class="mobile-nav-link">Installation</a>
+        <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank" class="mobile-nav-link">GitHub</a>
+        <a href="#releases" class="download-btn mobile-nav-link">Download</a>
+    </div>
 
     <!-- Hero Section -->
     <section class="hero">
@@ -851,9 +1025,8 @@
         <div class="hero-video-overlay"></div>
         <div class="hero-bg"></div>
         <div class="hero-content fade-in">
-            
-            <div><img src="src/icon_dark.png" width="500"></div>
-<br>
+            <div class="hero-logo"><img src="src/icon_dark.png" alt="LiveWallpaper Logo"></div>
+            <br>
             <div class="hero-badge">✨ Open Source • macOS 15+</div>
             <h1>
                 <span class="hero-gradient-text">Stunning Live</span><br>
@@ -865,7 +1038,7 @@
                     <span>⬇</span> Download Free
                 </a>
                 <a href="https://github.com/thusvill/LiveWallpaperMacOS" class="btn-large btn-secondary-large" target="_blank">
-                    <span><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"/></span> Star on GitHub
+                    <span><img width="26" height="26" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"></span> Star on GitHub
                 </a>
             </div>
         </div>
@@ -879,32 +1052,32 @@
         </div>
         <div class="feature-grid">
             <div class="feature-card">
-                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/imac.png" alt="imac"/></div>
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/imac.png" alt="imac"></div>
                 <h3>Multiple Display Support</h3>
                 <p>Separate configurations for each display. Your wallpapers adapt seamlessly across all your screens.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/lightning-bolt.png" alt="lightning-bolt"/></div>
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/lightning-bolt.png" alt="lightning-bolt"></div>
                 <h3>Optimized Performance</h3>
                 <p>Under 20MB RAM usage with ~1% CPU load. Automatically pauses on lock screen to save battery.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/ruler.png" alt="ruler"/></div>
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/ruler.png" alt="ruler"></div>
                 <h3>Video Scaling Options</h3>
                 <p>Fill, fit, or stretch your wallpapers. Support for .mp4 and .mov formats up to 4K resolution.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/vertical-settings-mixer.png" alt="vertical-settings-mixer"/></div>
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/vertical-settings-mixer.png" alt="vertical-settings-mixer"></div>
                 <h3>Volume Controls</h3>
                 <p>Adjust audio levels for each wallpaper or mute completely. Full control over your experience.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/shuffle.png" alt="shuffle"/></div>
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass-color/32/shuffle.png" alt="shuffle"></div>
                 <h3>Random Wallpapers</h3>
                 <p>Set random wallpapers on startup or screen unlock. Keep your desktop fresh and surprising.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass/48/mac-client.png" alt="mac-client"/></div>
+                <div class="feature-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass/48/mac-client.png" alt="mac-client"></div>
                 <h3>Native macOS Feel</h3>
                 <p>Built with SwiftUI. Liquid glass effects that look and feel like they're part of macOS.</p>
             </div>
@@ -915,7 +1088,7 @@
     <section id="performance" class="performance">
         <div class="section-header">
             <div class="section-label">PERFORMANCE</div>
-            <h2>Battery & CPU Usage</h2>
+            <h2>Battery &amp; CPU Usage</h2>
         </div>
         <div class="perf-grid">
             <div class="perf-card">
@@ -939,7 +1112,7 @@
             <div class="section-label">SCREENSHOTS</div>
             <h2>See It In Action</h2>
         </div>
-        
+
         <div class="screenshots-slideshow">
             <div class="screenshot-slide active">
                 <img src="src/screenshots/screenshot1.png" alt="Screenshot 1">
@@ -956,10 +1129,10 @@
             <div class="screenshot-slide">
                 <img src="src/screenshots/screenshot5.png" alt="Screenshot 5">
             </div>
-            
-            <div class="slideshow-nav prev">‹</div>
-            <div class="slideshow-nav next">›</div>
-            
+
+            <div class="slideshow-nav prev" role="button" aria-label="Previous slide">&#8249;</div>
+            <div class="slideshow-nav next" role="button" aria-label="Next slide">&#8250;</div>
+
             <div class="slideshow-controls">
                 <div class="slide-dot active" data-slide="0"></div>
                 <div class="slide-dot" data-slide="1"></div>
@@ -978,13 +1151,12 @@
         </div>
         <div class="install-grid">
             <div class="install-card">
-                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/beer.png" alt="beer"/> Homebrew</h3>
+                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/beer.png" alt="beer"> Homebrew</h3>
                 <p>Quick install via package manager</p>
-                <div class="code-block">brew tap thusvill/livewallpaper && brew install --cask livewallpaper</div>
+                <div class="code-block">brew tap thusvill/livewallpaper &amp;&amp; brew install --cask livewallpaper</div>
             </div>
             <div class="install-card">
-                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/hdd.png" alt="hdd"/> DMG Install</h3>
-                
+                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/hdd.png" alt="hdd"> DMG Install</h3>
                 <a href="#releases" class="btn-large btn-primary-large">
                     <span>⬇</span> Download DMG
                 </a>
@@ -993,11 +1165,11 @@
                 <div class="code-block">xattr -d com.apple.quarantine /Applications/LiveWallpaper.app</div>
             </div>
             <div class="install-card">
-                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/hammer.png" alt="hammer"/> Build Source (Objective C++ branch)</h3>
+                <h3><img width="32" height="32" src="https://img.icons8.com/liquid-glass-color/32/hammer.png" alt="hammer"> Build Source (Objective C++ branch)</h3>
                 <p>Compile yourself</p>
                 <div class="code-block">git clone https://github.com/thusvill/LiveWallpaperMacOS.git
-cd LiveWallpaperMacOS && mkdir build
-cmake .. && make -j$(sysctl -n hw.ncpu)</div>
+cd LiveWallpaperMacOS &amp;&amp; mkdir build
+cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
             </div>
         </div>
     </section>
@@ -1009,12 +1181,14 @@ cmake .. && make -j$(sysctl -n hw.ncpu)</div>
             <h2>Latest Releases</h2>
         </div>
         <div id="releases-container" class="releases-list">
-            <div class="loading">Loading releases...</div>
+            <div class="loading">Loading releases…</div>
         </div>
         <br>
-        <div><a href="#releases" class="btn-large btn-primary-large">
-                    <span>⬇</span> More releases
-                </a></div>
+        <div style="text-align:center;">
+            <a href="https://github.com/thusvill/LiveWallpaperMacOS/releases" target="_blank" class="btn-large btn-primary-large">
+                <span>⬇</span> All Releases on GitHub
+            </a>
+        </div>
     </section>
 
     <!-- Contributors Section -->
@@ -1024,7 +1198,7 @@ cmake .. && make -j$(sysctl -n hw.ncpu)</div>
             <h2>Contributors</h2>
         </div>
         <div id="contributors-container" class="contributors-grid">
-            <div class="loading">Loading contributors...</div>
+            <div class="loading">Loading contributors…</div>
         </div>
     </section>
 
@@ -1036,18 +1210,18 @@ cmake .. && make -j$(sysctl -n hw.ncpu)</div>
         </div>
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-icon"><img width="50" height="50" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"/></div>
-                <div id="stars-count" class="stat-number">526</div>
+                <div class="stat-icon"><img width="50" height="50" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"></div>
+                <div id="stars-count" class="stat-number">—</div>
                 <div class="stat-label">Stars</div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass/48/code-fork.png" alt="code-fork"/></div>
-                <div id="forks-count" class="stat-number">19</div>
+                <div class="stat-icon"><img width="48" height="48" src="https://img.icons8.com/liquid-glass/48/code-fork.png" alt="code-fork"></div>
+                <div id="forks-count" class="stat-number">—</div>
                 <div class="stat-label">Forks</div>
             </div>
             <div class="stat-card">
-                <div class="stat-icon"><img width="50" height="50" src="https://img.icons8.com/liquid-glass-color/32/visible.png" alt="visible"/></div>
-                <div id="watchers-count" class="stat-number">5</div>
+                <div class="stat-icon"><img width="50" height="50" src="https://img.icons8.com/liquid-glass-color/32/visible.png" alt="visible"></div>
+                <div id="watchers-count" class="stat-number">—</div>
                 <div class="stat-label">Watchers</div>
             </div>
         </div>
@@ -1081,186 +1255,261 @@ cmake .. && make -j$(sysctl -n hw.ncpu)</div>
     </footer>
 
     <script>
+        /* ──────────────────────────────────────────────
+           GitHub Data Fetching
+           Strategy:
+           1. Try GitHub API directly (works when not rate-limited)
+           2. Fall back to allorigins proxy
+           3. Fall back to cached/hardcoded values so UI is never broken
+        ────────────────────────────────────────────── */
 
+        const REPO = 'thusvill/LiveWallpaperMacOS';
+        const GH_BASE = `https://api.github.com/repos/${REPO}`;
+        const PROXY = 'https://api.allorigins.win/get?url=';
 
-    async function fetchJSON(url) {
-    const proxy = 'https://api.allorigins.win/get?url=';
-    const res = await fetch(proxy + encodeURIComponent(url));
-    const data = await res.json();
-    return JSON.parse(data.contents);
-}
+        // Simple in-memory cache (survives soft navigations within session)
+        const _cache = {};
 
+        async function ghFetch(endpoint) {
+            if (_cache[endpoint]) return _cache[endpoint];
 
+            const url = `${GH_BASE}${endpoint}`;
 
-async function fetchGitHubData() {
-    try {
-        const repoData = await fetchJSON(
-    'https://api.github.com/repos/thusvill/LiveWallpaperMacOS'
-);
-        
-        document.getElementById('stars-count').textContent = repoData?.stargazers_count ?? '...';
-        document.getElementById('forks-count').textContent = repoData?.forks_count ?? '...';
-        document.getElementById('watchers-count').textContent = repoData?.subscribers_count ?? '...';
-
-        const releases = await fetchJSON(
-    'https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases'
-);
-
-        // fallback to proxy only if GitHub API direct worked poorly
-        if (!Array.isArray(releases)) {
-            releases = await safeFetch('https://api.github.com/repos/thusvill/LiveWallpaperMacOS/releases', true);
-        }
-
-        const releasesContainer = document.getElementById('releases-container');
-        releasesContainer.innerHTML = '';
-
-        if (Array.isArray(releases) && releases.length) {
-            releases.slice(0, 5).forEach(release => {
-                const date = new Date(release.published_at).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
+            // Attempt 1: direct GitHub API
+            try {
+                const res = await fetch(url, {
+                    headers: { Accept: 'application/vnd.github.v3+json' }
                 });
+                if (res.ok) {
+                    const data = await res.json();
+                    _cache[endpoint] = data;
+                    return data;
+                }
+                // Rate-limited or error — fall through to proxy
+            } catch (_) { /* network error */ }
 
-                const downloadAsset = release.assets?.find(asset =>
-                    asset.name.endsWith('.dmg') || asset.name.endsWith('.zip')
-                );
+            // Attempt 2: allorigins proxy
+            try {
+                const res = await fetch(PROXY + encodeURIComponent(url));
+                if (res.ok) {
+                    const wrapper = await res.json();
+                    const data = JSON.parse(wrapper.contents);
+                    _cache[endpoint] = data;
+                    return data;
+                }
+            } catch (_) { /* proxy error */ }
 
-                const releaseCard = document.createElement('div');
-                releaseCard.className = 'release-card';
-                releaseCard.innerHTML = `
-                    <div class="release-header">
-                        <div>
-                            <div class="release-version">${release.name || release.tag_name}</div>
-                            <div class="release-date">${date}</div>
-                        </div>
-                        ${downloadAsset ? `
-                            <a href="${downloadAsset.browser_download_url}"
-                               class="btn-large btn-primary-large">
-                                Download (${(downloadAsset.size / 1024 / 1024).toFixed(1)} MB)
-                            </a>
-                        ` : ''}
-                    </div>
-                    <div class="release-body">
-                        ${release.body ? release.body.split('\n').slice(0, 4).join('<br>') : 'No description'}
-                    </div>
-                `;
-                releasesContainer.appendChild(releaseCard);
-            });
-        } else {
-            releasesContainer.innerHTML = `
-                <div class="release-card">
-                    <h3>No releases available</h3>
-                </div>
-            `;
+            return null; // both failed
         }
 
-        const contributors = await fetchJSON(
-    'https://api.github.com/repos/thusvill/LiveWallpaperMacOS/contributors'
-);
-        const contributorsContainer = document.getElementById('contributors-container');
-        contributorsContainer.innerHTML = '';
+        function animateNumber(el, target) {
+            if (!el || isNaN(target)) return;
+            const duration = 1200;
+            const start = performance.now();
+            const from = parseInt(el.textContent, 10) || 0;
+            function step(now) {
+                const t = Math.min((now - start) / duration, 1);
+                const eased = 1 - Math.pow(1 - t, 3);
+                el.textContent = Math.round(from + (target - from) * eased);
+                if (t < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        }
 
-        (contributors || []).forEach(contributor => {
-            const contributorCard = document.createElement('div');
-            contributorCard.className = 'contributor-card';
-            contributorCard.innerHTML = `
-                <img src="${contributor.avatar_url}" alt="${contributor.login}" class="contributor-avatar">
-                <div class="contributor-name">${contributor.login}</div>
-                <a href="${contributor.html_url}" target="_blank" class="contributor-link">
-                    ${contributor.contributions} contributions
-                </a>
-            `;
-            contributorsContainer.appendChild(contributorCard);
+        async function fetchGitHubData() {
+            // ── Repo stats ──
+            const repo = await ghFetch('');
+            if (repo) {
+                animateNumber(document.getElementById('stars-count'), repo.stargazers_count);
+                animateNumber(document.getElementById('forks-count'), repo.forks_count);
+                animateNumber(document.getElementById('watchers-count'), repo.subscribers_count);
+            } else {
+                // Fallback hardcoded values
+                document.getElementById('stars-count').textContent = '526';
+                document.getElementById('forks-count').textContent = '19';
+                document.getElementById('watchers-count').textContent = '5';
+            }
+
+            // ── Releases ──
+            const releasesContainer = document.getElementById('releases-container');
+            const releases = await ghFetch('/releases');
+
+            if (Array.isArray(releases) && releases.length > 0) {
+                releasesContainer.innerHTML = '';
+                releases.slice(0, 5).forEach(release => {
+                    const date = new Date(release.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric', month: 'long', day: 'numeric'
+                    });
+
+                    // Collect all downloadable assets
+                    const assets = (release.assets || []).filter(a =>
+                        a.name.endsWith('.dmg') || a.name.endsWith('.zip') || a.name.endsWith('.pkg')
+                    );
+
+                    const assetButtons = assets.map(a => `
+                        <a href="${a.browser_download_url}" class="release-asset-btn" download>
+                            ⬇ ${a.name} <span style="opacity:0.7;font-weight:400;">(${(a.size / 1024 / 1024).toFixed(1)} MB)</span>
+                        </a>
+                    `).join('');
+
+                    // Render markdown-like body: sanitise & limit lines
+                    const bodyText = release.body
+                        ? release.body
+                            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                            .split('\n').slice(0, 6).join('<br>')
+                        : 'No description provided.';
+
+                    const isLatest = releases[0].id === release.id;
+                    const latestBadge = isLatest
+                        ? `<span style="background:var(--primary);color:#000;font-size:0.7rem;font-weight:700;padding:3px 10px;border-radius:10px;margin-left:12px;vertical-align:middle;">LATEST</span>`
+                        : '';
+
+                    const card = document.createElement('div');
+                    card.className = 'release-card';
+                    card.innerHTML = `
+                        <div class="release-header">
+                            <div>
+                                <div class="release-version">${release.name || release.tag_name}${latestBadge}</div>
+                                <div class="release-date">${date}</div>
+                            </div>
+                        </div>
+                        ${assets.length > 0 ? `<div class="release-assets">${assetButtons}</div>` : ''}
+                        <div class="release-body">${bodyText}</div>
+                    `;
+                    releasesContainer.appendChild(card);
+                });
+            } else {
+                releasesContainer.innerHTML = `
+                    <div class="error-msg">
+                        Could not load releases. 
+                        <a href="https://github.com/${REPO}/releases" target="_blank" style="color:var(--primary);">View on GitHub →</a>
+                    </div>`;
+            }
+
+            // ── Contributors ──
+            const contributorsContainer = document.getElementById('contributors-container');
+            const contributors = await ghFetch('/contributors?per_page=12');
+
+            if (Array.isArray(contributors) && contributors.length > 0) {
+                contributorsContainer.innerHTML = '';
+                contributors.forEach(contributor => {
+                    const card = document.createElement('div');
+                    card.className = 'contributor-card';
+                    card.innerHTML = `
+                        <img src="${contributor.avatar_url}&s=160" alt="${contributor.login}" class="contributor-avatar" loading="lazy">
+                        <div class="contributor-name">${contributor.login}</div>
+                        <a href="${contributor.html_url}" target="_blank" rel="noopener" class="contributor-link">
+                            ${contributor.contributions} contribution${contributor.contributions !== 1 ? 's' : ''}
+                        </a>
+                    `;
+                    contributorsContainer.appendChild(card);
+                });
+            } else {
+                contributorsContainer.innerHTML = `
+                    <div class="error-msg">
+                        Could not load contributors.
+                        <a href="https://github.com/${REPO}/graphs/contributors" target="_blank" style="color:var(--primary);">View on GitHub →</a>
+                    </div>`;
+            }
+        }
+
+        fetchGitHubData();
+
+        /* ──────────────────────────────────────────────
+           Hamburger / Mobile Nav
+        ────────────────────────────────────────────── */
+        const hamburger = document.getElementById('hamburger');
+        const mobileNav = document.getElementById('mobile-nav');
+
+        hamburger.addEventListener('click', () => {
+            hamburger.classList.toggle('open');
+            mobileNav.classList.toggle('open');
+            document.body.style.overflow = mobileNav.classList.contains('open') ? 'hidden' : '';
         });
 
-    } catch (err) {
-        console.error(err);
-    }
-}
+        document.querySelectorAll('.mobile-nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                hamburger.classList.remove('open');
+                mobileNav.classList.remove('open');
+                document.body.style.overflow = '';
+            });
+        });
 
-fetchGitHubData();
-
-       
-
-        // Screenshots Slideshow
+        /* ──────────────────────────────────────────────
+           Screenshots Slideshow
+        ────────────────────────────────────────────── */
         let currentSlide = 0;
         const slides = document.querySelectorAll('.screenshot-slide');
         const dots = document.querySelectorAll('.slide-dot');
         const totalSlides = slides.length;
+        let slideInterval = null;
 
         function showSlide(index) {
-            slides.forEach(slide => slide.classList.remove('active'));
-            dots.forEach(dot => dot.classList.remove('active'));
-            
+            slides[currentSlide].classList.remove('active');
+            dots[currentSlide].classList.remove('active');
             currentSlide = (index + totalSlides) % totalSlides;
             slides[currentSlide].classList.add('active');
             dots[currentSlide].classList.add('active');
         }
 
-        function nextSlide() {
-            showSlide(currentSlide + 1);
-        }
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function prevSlide() { showSlide(currentSlide - 1); }
 
-        function prevSlide() {
-            showSlide(currentSlide - 1);
-        }
-
-        // Auto-advance slides every 4 seconds
-        let slideInterval = setInterval(nextSlide, 4000);
-
-        // Navigation controls
-        document.querySelector('.slideshow-nav.next').addEventListener('click', () => {
-            nextSlide();
+        function resetInterval() {
             clearInterval(slideInterval);
             slideInterval = setInterval(nextSlide, 4000);
-        });
+        }
 
-        document.querySelector('.slideshow-nav.prev').addEventListener('click', () => {
-            prevSlide();
-            clearInterval(slideInterval);
-            slideInterval = setInterval(nextSlide, 4000);
-        });
+        resetInterval();
 
-        // Dot controls
-        dots.forEach((dot, index) => {
-            dot.addEventListener('click', () => {
-                showSlide(index);
-                clearInterval(slideInterval);
-                slideInterval = setInterval(nextSlide, 4000);
-            });
-        });
+        document.querySelector('.slideshow-nav.next').addEventListener('click', () => { nextSlide(); resetInterval(); });
+        document.querySelector('.slideshow-nav.prev').addEventListener('click', () => { prevSlide(); resetInterval(); });
+        dots.forEach((dot, i) => dot.addEventListener('click', () => { showSlide(i); resetInterval(); }));
 
-        // Smooth scroll
+        // Touch/swipe support for slideshow
+        (function () {
+            const el = document.querySelector('.screenshots-slideshow');
+            let startX = 0;
+            el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+            el.addEventListener('touchend', e => {
+                const dx = e.changedTouches[0].clientX - startX;
+                if (Math.abs(dx) > 40) {
+                    dx < 0 ? nextSlide() : prevSlide();
+                    resetInterval();
+                }
+            }, { passive: true });
+        })();
+
+        /* ──────────────────────────────────────────────
+           Smooth scroll
+        ────────────────────────────────────────────── */
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
-                e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
+                    e.preventDefault();
                     target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
         });
 
-        // Scroll animations
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -100px 0px'
-        };
-
+        /* ──────────────────────────────────────────────
+           Scroll-reveal animations
+        ────────────────────────────────────────────── */
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
                     entry.target.style.opacity = '1';
                     entry.target.style.transform = 'translateY(0)';
+                    observer.unobserve(entry.target); // fire once
                 }
             });
-        }, observerOptions);
+        }, { threshold: 0.08, rootMargin: '0px 0px -60px 0px' });
 
         document.querySelectorAll('section').forEach(section => {
             section.style.opacity = '0';
             section.style.transform = 'translateY(30px)';
-            section.style.transition = 'all 0.6s ease';
+            section.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
             observer.observe(section);
         });
     </script>
