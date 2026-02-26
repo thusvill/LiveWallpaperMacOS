@@ -12,6 +12,10 @@
             box-sizing: border-box;
         }
 
+        html {
+            overflow-x: hidden;
+        }
+
         :root {
             --primary: #fbbf24;
             --primary-dark: #f59e0b;
@@ -37,71 +41,75 @@
             top: 0;
             left: 0;
             right: 0;
+            width: 100%;          /* never wider than viewport */
             z-index: 300;
             backdrop-filter: blur(20px) saturate(180%);
-            background: rgba(0, 0, 0, 0.72);
+            background: rgba(0, 0, 0, 0.85);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 12px 20px;
+            height: 60px;
+            overflow: hidden;     /* hard clamp — nav CANNOT cause horizontal scroll */
         }
 
         .nav-content {
             max-width: 1400px;
+            height: 100%;
             margin: 0 auto;
+            padding: 0 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             gap: 12px;
+            /* no overflow here — nav clips it */
         }
 
         .logo {
-            font-size: 1.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), #facc15);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
             text-decoration: none;
             flex-shrink: 0;
             line-height: 1;
+            display: flex;
+            align-items: center;
         }
 
         .logo img {
             display: block;
-            max-width: 52px;
-            height: auto;
+            width: 40px;
+            height: 40px;
+            object-fit: contain;
         }
 
         .nav-links {
             display: flex;
-            gap: 40px;
+            gap: 28px;
             align-items: center;
-            flex-shrink: 0;
+            /* allow shrinking so links compress before overflowing */
+            flex-shrink: 1;
+            min-width: 0;
         }
 
         .nav-links a {
             color: var(--text);
             text-decoration: none;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             transition: color 0.3s ease;
             white-space: nowrap;
         }
 
-        .nav-links a:hover {
-            color: var(--primary);
-        }
+        .nav-links a:hover { color: var(--primary); }
 
         .download-btn {
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: #000;
-            padding: 10px 24px;
+            padding: 8px 18px;
             border-radius: 20px;
             font-weight: 600;
             border: none;
             cursor: pointer;
             transition: all 0.3s ease;
             text-decoration: none;
-            font-size: 0.95rem;
+            font-size: 0.88rem;
             white-space: nowrap;
             flex-shrink: 0;
+            display: inline-block;
         }
 
         .download-btn:hover {
@@ -109,91 +117,131 @@
             box-shadow: 0 10px 30px rgba(251, 191, 36, 0.4);
         }
 
-        /* Hamburger — always on top of everything */
+        /* ── Hamburger ── */
+        /* Hidden on desktop, always stays on top of drawer */
         .hamburger {
             display: none;
             flex-direction: column;
+            justify-content: center;
             gap: 5px;
             cursor: pointer;
-            padding: 8px;
+            padding: 10px;
+            margin: -10px;       /* expand tap area without shifting layout */
             background: none;
             border: none;
-            z-index: 400;   /* above nav (300) and mobile-nav (350) */
+            z-index: 500;        /* must be above .mobile-nav (z-index: 450) */
             position: relative;
             flex-shrink: 0;
             touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .hamburger span {
             display: block;
-            width: 24px;
+            width: 22px;
             height: 2px;
-            background: var(--text);
+            background: #ffffff;
             border-radius: 2px;
-            transition: all 0.3s ease;
+            transition: transform 0.3s ease, opacity 0.3s ease;
             pointer-events: none;
         }
 
+        /* X state */
         .hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
         .hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
         .hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-        /* Mobile nav drawer — sits between nav and hamburger */
+        /* ── Mobile Nav Drawer ── */
         .mobile-nav {
-            display: none;
+            visibility: hidden;
+            opacity: 0;
+            pointer-events: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
+            inset: 0;
             background: rgba(0, 0, 0, 0.97);
-            z-index: 350;   /* above nav (300), below hamburger (400) */
+            z-index: 450;        /* above nav (300), below hamburger (500) */
+            display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 32px;
-            padding: 100px 40px 60px;
-            backdrop-filter: blur(20px);
+            gap: 28px;
+            padding: 80px 32px 60px;
+            backdrop-filter: blur(24px);
             overflow-y: auto;
+            transition: opacity 0.25s ease, visibility 0.25s ease;
         }
 
         .mobile-nav.open {
+            visibility: visible;
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Close button inside drawer */
+        .mobile-nav-close {
+            position: absolute;
+            top: 18px;
+            right: 20px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            color: #fff;
+            font-size: 1.4rem;
+            line-height: 1;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
             display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.2s ease, border-color 0.2s ease;
+            flex-shrink: 0;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .mobile-nav-close:hover,
+        .mobile-nav-close:active {
+            background: rgba(251, 191, 36, 0.15);
+            border-color: var(--primary);
+            color: var(--primary);
         }
 
         .mobile-nav a {
             color: var(--text);
             text-decoration: none;
-            font-size: 1.6rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            transition: color 0.3s ease;
+            transition: color 0.2s ease;
+            padding: 6px 0;
         }
 
         .mobile-nav a:hover,
-        .mobile-nav a:active {
-            color: var(--primary);
-        }
+        .mobile-nav a:active { color: var(--primary); }
 
         .mobile-nav .download-btn {
-            font-size: 1.1rem;
-            padding: 14px 40px;
+            font-size: 1rem;
+            padding: 13px 36px;
+            border-radius: 24px;
+            margin-top: 8px;
         }
 
         /* ── Hero Section ── */
         .hero {
-            min-height: 100vh;
+            min-height: 100svh; /* use svh for mobile — excludes browser chrome */
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
             overflow: hidden;
-            padding-top: 80px;
+            padding: 80px 0 40px; /* top clears nav, bottom breathes */
         }
 
         .hero-bg {
             position: absolute;
             inset: 0;
             background: radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.1) 0%, transparent 70%);
+            z-index: 0;
         }
 
         .hero-video {
@@ -209,7 +257,10 @@
         .hero-video-overlay {
             position: absolute;
             inset: 0;
-            background: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.5) 50%, rgba(0, 0, 0, 0.8) 100%);
+            background: linear-gradient(180deg,
+                rgba(0,0,0,0.75) 0%,
+                rgba(0,0,0,0.55) 50%,
+                rgba(0,0,0,0.85) 100%);
             z-index: 1;
         }
 
@@ -217,33 +268,37 @@
             position: relative;
             z-index: 2;
             text-align: center;
-            max-width: 900px;
+            max-width: 860px;
             width: 100%;
-            padding: 40px 16px;
+            padding: 24px 20px 32px;
+        }
+
+        .hero-logo {
+            margin-bottom: 20px;
         }
 
         .hero-logo img {
-            width: min(500px, 75vw);
+            width: min(420px, 60vw);
             height: auto;
         }
 
         .hero-badge {
             display: inline-block;
-            padding: 8px 20px;
+            padding: 7px 18px;
             background: rgba(251, 191, 36, 0.1);
             border: 1px solid var(--border);
             border-radius: 20px;
             font-size: 0.85rem;
             color: var(--primary);
-            margin-bottom: 30px;
+            margin-bottom: 24px;
             backdrop-filter: blur(10px);
         }
 
         h1 {
-            font-size: clamp(2.2rem, 8vw, 7rem);
+            font-size: clamp(2rem, 7.5vw, 7rem);
             font-weight: 800;
             line-height: 1.1;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             letter-spacing: clamp(-1px, -0.04em, -3px);
         }
 
@@ -256,18 +311,19 @@
         .subtitle-break { display: inline; }
 
         .hero-subtitle {
-            font-size: clamp(0.95rem, 3vw, 1.8rem);
+            font-size: clamp(0.9rem, 2.8vw, 1.8rem);
             color: var(--text-muted);
-            margin-bottom: 50px;
+            margin-bottom: 36px;
             font-weight: 400;
             word-wrap: break-word;
         }
 
         .hero-cta {
             display: flex;
-            gap: 20px;
+            gap: 16px;
             justify-content: center;
             flex-wrap: wrap;
+            padding-bottom: 8px;
         }
 
         .btn-large {
@@ -765,56 +821,69 @@
 
         .releases-list {
             display: grid;
-            gap: 30px;
+            gap: 20px;
             margin-top: 80px;
+            width: 100%;
+            min-width: 0;          /* grid child won't blow out */
         }
 
         .release-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 40px;
-            transition: all 0.3s ease;
+            border-radius: 20px;
+            padding: 28px 24px;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease; /* no translateX */
+            width: 100%;
+            min-width: 0;          /* prevent flex/grid blowout */
+            overflow: hidden;      /* clip anything inside that's too wide */
+            box-sizing: border-box;
         }
 
         .release-card:hover {
             border-color: var(--primary);
-            transform: translateX(6px);
             box-shadow: 0 20px 60px rgba(251, 191, 36, 0.15);
         }
 
         .release-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 25px;
+            align-items: flex-start;
+            margin-bottom: 16px;
             flex-wrap: wrap;
-            gap: 16px;
+            gap: 10px;
+            min-width: 0;
         }
 
         .release-version {
-            font-size: 1.8rem;
+            font-size: 1.4rem;
             font-weight: 700;
             color: var(--primary);
+            word-break: break-word;
+            min-width: 0;
         }
 
         .release-date {
             color: var(--text-muted);
-            font-size: 0.95rem;
+            font-size: 0.88rem;
         }
 
         .release-body {
             color: var(--text-muted);
-            line-height: 1.8;
-            margin-top: 20px;
-            font-size: 0.95rem;
+            line-height: 1.7;
+            margin-top: 14px;
+            font-size: 0.9rem;
+            word-break: break-word;   /* long URLs/lines wrap instead of overflow */
+            overflow-wrap: break-word;
+            white-space: normal;
+            min-width: 0;
         }
 
         .release-assets {
             display: flex;
             flex-wrap: wrap;
             gap: 10px;
-            margin-top: 16px;
+            margin-top: 14px;
+            min-width: 0;
         }
 
         .release-asset-btn {
@@ -823,7 +892,7 @@
             gap: 8px;
             padding: 10px 18px;
             border-radius: 30px;
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             font-weight: 600;
             background: linear-gradient(135deg, var(--primary), var(--primary-dark));
             color: #000;
@@ -833,6 +902,7 @@
             max-width: 100%;
             overflow: hidden;
             text-overflow: ellipsis;
+            box-sizing: border-box;
         }
 
         .release-asset-btn:hover {
@@ -903,111 +973,75 @@
             animation: fadeInUp 0.6s ease forwards;
         }
 
-        /* ── Responsive: tablet (≤1024px) ── */
+        /* ── Tablet (≤1024px) ── */
         @media (max-width: 1024px) {
-            nav { padding: 12px 24px; }
-
             .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
                 padding: 100px 20px;
             }
         }
 
-        /* ── Responsive: mobile (≤768px) ── */
-        @media (max-width: 768px) {
-            nav { padding: 10px 16px; }
-
+        /* ── Switch to hamburger at 900px — before nav links can overflow ── */
+        @media (max-width: 900px) {
             .nav-links { display: none !important; }
-
             .hamburger { display: flex !important; }
+        }
 
+        /* ── Mobile layout (≤768px) ── */
+        @media (max-width: 768px) {
             .features, .performance, .gallery, .installation, .stats, .contributors, .releases {
                 padding: 70px 14px;
             }
-
             .section-header { margin-bottom: 32px; }
-
             h2 { letter-spacing: -0.5px; }
-
-            .feature-card, .install-card, .perf-card, .stat-card {
-                padding: 28px 20px;
-            }
-
+            .feature-card, .install-card, .perf-card, .stat-card { padding: 28px 20px; }
             .contributor-card { padding: 20px 12px; }
-
-            .screenshots-slideshow {
-                height: clamp(160px, 52vw, 300px);
-                margin-top: 32px;
-            }
-
-            .slideshow-nav {
-                width: 36px;
-                height: 36px;
-                font-size: 1rem;
-            }
+            .screenshots-slideshow { height: clamp(160px, 52vw, 300px); margin-top: 32px; }
+            .slideshow-nav { width: 36px; height: 36px; font-size: 1rem; }
             .slideshow-nav.prev { left: 6px; }
             .slideshow-nav.next { right: 6px; }
-
             .release-card { padding: 22px 16px; }
-
             .release-version { font-size: 1.3rem; }
-
-            .release-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
+            .release-header { flex-direction: column; align-items: flex-start; }
             .code-block { font-size: 0.72rem; }
         }
 
-        /* ── Responsive: small mobile (≤480px) ── */
+        /* ── Small mobile (≤480px) ── */
         @media (max-width: 480px) {
-            nav { padding: 8px 12px; }
+            .hero {
+                min-height: 100svh;
+                align-items: flex-start;
+                padding-top: 72px;
+            }
 
-            .logo img { max-width: 40px; }
+            .hero-content { padding: 16px 16px 28px; }
+            .hero-logo img { width: min(280px, 65vw); }
+            .hero-logo { margin-bottom: 14px; }
 
-            h1 { font-size: clamp(1.8rem, 9vw, 3rem); letter-spacing: -0.5px; }
-
+            h1 { font-size: clamp(1.75rem, 8.5vw, 2.8rem); letter-spacing: -0.5px; margin-bottom: 14px; }
+            .hero-subtitle { font-size: 0.95rem; margin-bottom: 24px; }
             .hero-subtitle br, .subtitle-break { display: none; }
 
-            .hero-cta {
-                flex-direction: column;
-                align-items: stretch;
-                gap: 12px;
-            }
-
-            .hero-cta .btn-large {
-                width: 100%;
-                justify-content: center;
-            }
-
+            .hero-cta { flex-direction: column; align-items: stretch; gap: 12px; }
+            .hero-cta .btn-large { width: 100%; justify-content: center; padding: 15px 20px; font-size: 1rem; }
             .btn-large { padding: 14px 24px; font-size: 0.9rem; }
 
-            .contributors-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
+            /* Release cards — full-width, tighter on mobile */
+            .releases { padding: 70px 12px; }
+            .releases-list { gap: 14px; }
+            .release-card { padding: 18px 14px; border-radius: 14px; }
+            .release-version { font-size: 1.1rem; }
+            .release-asset-btn { width: 100%; justify-content: center; font-size: 0.8rem; }
 
-            .release-asset-btn {
-                width: 100%;
-                justify-content: center;
-            }
-
+            .contributors-grid { grid-template-columns: repeat(2, 1fr); }
             .slideshow-controls { padding: 8px 14px; gap: 8px; }
-
             .slide-dot { width: 8px; height: 8px; }
         }
 
-        /* ── Responsive: tiny (≤360px) ── */
+        /* ── Tiny phones (≤360px) ── */
         @media (max-width: 360px) {
-            nav { padding: 8px 10px; }
-
-            .logo img { max-width: 36px; }
-
-            .contributors-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-
+            .logo img { width: 36px; height: 36px; }
+            .contributors-grid { grid-template-columns: 1fr 1fr; }
             .contributor-card { padding: 16px 8px; }
-
             .contributor-avatar { width: 56px; height: 56px; }
         }
     </style>
@@ -1016,7 +1050,7 @@
     <!-- Navigation -->
     <nav>
         <div class="nav-content">
-            <a href="#" class="logo"><img src="src/icon_dark.png" width="60" alt="LiveWallpaper"></a>
+            <a href="#" class="logo"><img src="src/icon_dark.png" alt="LiveWallpaper"></a>
             <div class="nav-links">
                 <a href="#features">Features</a>
                 <a href="#installation">Installation</a>
@@ -1030,10 +1064,11 @@
     </nav>
 
     <!-- Mobile Nav Drawer -->
-    <div class="mobile-nav" id="mobile-nav">
+    <div class="mobile-nav" id="mobile-nav" role="dialog" aria-modal="true" aria-label="Navigation menu">
+        <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu">&#10005;</button>
         <a href="#features" class="mobile-nav-link">Features</a>
         <a href="#installation" class="mobile-nav-link">Installation</a>
-        <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank" class="mobile-nav-link">GitHub</a>
+        <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank" rel="noopener" class="mobile-nav-link">GitHub</a>
         <a href="#releases" class="download-btn mobile-nav-link">Download</a>
     </div>
 
@@ -1046,8 +1081,7 @@
         <div class="hero-bg"></div>
         <div class="hero-content fade-in">
             <div class="hero-logo"><img src="src/icon_dark.png" alt="LiveWallpaper Logo"></div>
-            <br>
-            <div class="hero-badge"><b>Open Source • MacOS 14+</b></div>
+            <div class="hero-badge"><strong>Open Source</strong> • macOS 14+</div>
             <h1>
                 <span class="hero-gradient-text">Stunning Live</span><br>
                 Wallpapers for Your Mac
@@ -1055,10 +1089,10 @@
             <p class="hero-subtitle">Transform your desktop with beautiful video wallpapers.<span class="subtitle-break"><br></span> Free, open-source, and optimized for performance.</p>
             <div class="hero-cta">
                 <a href="#releases" class="btn-large btn-primary-large">
-                    <span>⬇</span> Download Free
+                    ⬇ Download Free
                 </a>
-                <a href="https://github.com/thusvill/LiveWallpaperMacOS" class="btn-large btn-secondary-large" target="_blank">
-                    <span><img width="26" height="26" src="https://img.icons8.com/liquid-glass-color/32/star.png" alt="star"></span> Star on GitHub
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS" class="btn-large btn-secondary-large" target="_blank" rel="noopener">
+                    ☆ Star on GitHub
                 </a>
             </div>
         </div>
@@ -1372,11 +1406,26 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
                         </a>
                     `).join('');
 
-                    // Render markdown-like body: sanitise & limit lines
+                    // Render release body — strip markdown that produces long unbreakable strings
                     const bodyText = release.body
                         ? release.body
+                            // strip markdown image/link syntax first (long URLs)
+                            .replace(/!\[.*?\]\(.*?\)/g, '')
+                            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                            // strip raw http URLs (long unbreakable strings)
+                            .replace(/https?:\/\/\S+/g, '')
+                            // strip markdown headings ##
+                            .replace(/^#{1,6}\s*/gm, '')
+                            // strip bold/italic markers
+                            .replace(/(\*\*|__|\*|_)/g, '')
+                            // escape HTML
                             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                            .split('\n').slice(0, 6).join('<br>')
+                            // take first 5 non-empty lines only
+                            .split('\n')
+                            .map(l => l.trim())
+                            .filter(l => l.length > 0)
+                            .slice(0, 5)
+                            .join('<br>')
                         : 'No description provided.';
 
                     const isLatest = releases[0].id === release.id;
@@ -1438,21 +1487,37 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
         /* ──────────────────────────────────────────────
            Hamburger / Mobile Nav
         ────────────────────────────────────────────── */
-        const hamburger = document.getElementById('hamburger');
-        const mobileNav = document.getElementById('mobile-nav');
+        const hamburger    = document.getElementById('hamburger');
+        const mobileNav    = document.getElementById('mobile-nav');
+        const mobileClose  = document.getElementById('mobile-nav-close');
+
+        function openMenu() {
+            hamburger.classList.add('open');
+            mobileNav.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeMenu() {
+            hamburger.classList.remove('open');
+            mobileNav.classList.remove('open');
+            document.body.style.overflow = '';
+        }
 
         hamburger.addEventListener('click', () => {
-            hamburger.classList.toggle('open');
-            mobileNav.classList.toggle('open');
-            document.body.style.overflow = mobileNav.classList.contains('open') ? 'hidden' : '';
+            mobileNav.classList.contains('open') ? closeMenu() : openMenu();
         });
 
+        // Dedicated close button inside the drawer
+        mobileClose.addEventListener('click', closeMenu);
+
+        // Close when a nav link is tapped
         document.querySelectorAll('.mobile-nav-link').forEach(link => {
-            link.addEventListener('click', () => {
-                hamburger.classList.remove('open');
-                mobileNav.classList.remove('open');
-                document.body.style.overflow = '';
-            });
+            link.addEventListener('click', closeMenu);
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && mobileNav.classList.contains('open')) closeMenu();
         });
 
         /* ──────────────────────────────────────────────
