@@ -1,12 +1,12 @@
 > [!NOTE]
 > ## I’ll be Transformin Objective C++ UI's to SwiftUI.But ```daemon``` won't change.
 
-# LiveWallpaper App for MacOS 26+
+# LiveWallpaper App for MacOS 14+
 
 
-![Roller](./asset/livewall.png)
+![Roller](<img width="1024" height="1024" alt="Icon-iOS-Default-1024x1024@1x" src="https://github.com/user-attachments/assets/0a076d83-a71d-4329-9f76-7c170a2beb7b" />)
 
-This is an open-source live wallpaper applicationn for MacOS 26+
+This is an open-source live wallpaper applicationn for MacOS 14+
 
 <!-- ## Install using brew
 
