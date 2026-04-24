@@ -374,6 +374,7 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   for (AVQueuePlayer *player in _players) {
     [player pause];
   }
+  self.playbackPaused = YES;
 }
 
 - (void)screenUnlocked:(NSNotification *)note {
