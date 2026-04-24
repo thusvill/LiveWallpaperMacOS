@@ -386,11 +386,13 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
       CFAbsoluteTime elapsed = CFAbsoluteTimeGetCurrent() - _lockSystemTime;
       double lockSecs        = CMTimeGetSeconds(_lockVideoTime);
       double durSecs         = CMTimeGetSeconds(_videoDuration);
-      double resumeSecs      = fmod(lockSecs + elapsed, durSecs);
-      CMTime resumeTime      = CMTimeMakeWithSeconds(resumeSecs, 600);
-      [_players.firstObject seekToTime:resumeTime
-                     toleranceBefore:kCMTimeZero
-                      toleranceAfter:kCMTimeZero];
+      if (durSecs > 0.0) {
+        double resumeSecs = fmod(lockSecs + elapsed, durSecs);
+        CMTime resumeTime = CMTimeMakeWithSeconds(resumeSecs, 600);
+        [_players.firstObject seekToTime:resumeTime
+                       toleranceBefore:kCMTimeZero
+                        toleranceAfter:kCMTimeZero];
+      }
     }
 
     // Set windows to invisible so the fade-in hides the WVE->daemon seam.
