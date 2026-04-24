@@ -1,8 +1,25 @@
+/*
+ * This file is part of LiveWallpaper – LiveWallpaper App for macOS.
+ * Copyright (C) 2025 Bios thusvill
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #import "LockScreenAerialManager.h"
 #import <CoreMedia/CoreMedia.h>
 
 static NSString * const kSystemSlot   = @"/Library/Application Support/com.apple.idleassetsd/Customer/4KSDR240FPS/lw_slot.mov";
-static NSString * const kEntriesJSON  = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json";
 static NSString * const kCacheSubpath = @"Library/Caches/com.thusvill.LiveWallpaper/lockscreen/current.mov";
 static NSString * const kIndexPlist   = @"Library/Application Support/com.apple.wallpaper/Store/Index.plist";
 static NSString * const kShotID       = @"livewallpaper_custom_001";
@@ -49,7 +66,10 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
     NSString *dir  = [link stringByDeletingLastPathComponent];
     [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
     [fm removeItemAtPath:link error:nil];
-    [fm createSymbolicLinkAtPath:link withDestinationPath:videoPath error:nil];
+    NSError *linkErr;
+    if (![fm createSymbolicLinkAtPath:link withDestinationPath:videoPath error:&linkErr]) {
+        NSLog(@"[LockScreen] createSymbolicLink failed: %@", linkErr);
+    }
 }
 
 - (BOOL)writeIndexPlist:(NSError **)outError {
@@ -72,8 +92,9 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
                        error:&readErr] mutableCopy];
     if (!plist) { if (outError) *outError = readErr; return NO; }
 
-    // Useful for debugging structure on target machine
+#ifdef DEBUG
     NSLog(@"[LockScreen] Index.plist top-level keys: %@", plist.allKeys);
+#endif
 
     // Key path from research — verify with:
     // plutil -p ~/Library/Application\ Support/com.apple.wallpaper/Store/Index.plist
@@ -140,14 +161,16 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
 
     id previous = [NSPropertyListSerialization
         propertyListWithData:saved options:NSPropertyListImmutable format:nil error:nil];
+    if (!previous) return YES;
 
     NSMutableDictionary *allSpaces = [plist[@"AllSpacesAndDisplays"] mutableCopy];
-    NSMutableDictionary *idle      = [allSpaces[@"Idle"]             mutableCopy];
-    NSMutableDictionary *content   = [idle[@"Content"]               mutableCopy];
-    content[@"Choices"]             = previous;
-    idle[@"Content"]                = content;
-    allSpaces[@"Idle"]              = idle;
-    plist[@"AllSpacesAndDisplays"]  = allSpaces;
+    if (!allSpaces || !allSpaces[@"Idle"]) return YES;
+    NSMutableDictionary *idle    = [allSpaces[@"Idle"] mutableCopy];
+    NSMutableDictionary *content = [idle[@"Content"]   mutableCopy] ?: [NSMutableDictionary dictionary];
+    content[@"Choices"]           = previous;
+    idle[@"Content"]              = content;
+    allSpaces[@"Idle"]            = idle;
+    plist[@"AllSpacesAndDisplays"] = allSpaces;
 
     NSData *out = [NSPropertyListSerialization
         dataWithPropertyList:plist
@@ -159,5 +182,6 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
 }
 
 // performPrivilegedSetupWithVideoPath:completion: — implemented in Task 2
+// kEntriesJSON = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json"
 
 @end
