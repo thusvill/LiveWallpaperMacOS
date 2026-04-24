@@ -18,11 +18,11 @@
 		04E055F42EEA8D6800F90A44 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055472EEA795F00F90A44 /* CoreGraphics.framework */; };
 		04E055F52EEA8D7100F90A44 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055DE2EEA8C2600F90A44 /* QuartzCore.framework */; };
 		04E055F72EEA8DDA00F90A44 /* wallpaperdaemon in CopyFiles */ = {isa = PBXBuildFile; fileRef = 04E055E82EEA8D2C00F90A44 /* wallpaperdaemon */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		04E055F82EEA8DDA00F90A44 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055432EEA795200F90A44 /* CoreMedia.framework */; };
 		04E056FF2EEAB3EE00F90A44 /* LiveWallpaperApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E056672EEAB3EE00F90A44 /* LiveWallpaperApp.swift */; };
 		04E0570B2EEAB3EE00F90A44 /* WallpaperEngine.mm in Sources */ = {isa = PBXBuildFile; fileRef = 04E056F02EEAB3EE00F90A44 /* WallpaperEngine.mm */; };
 		04E057192EEAB3EE00F90A44 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E0565F2EEAB3EE00F90A44 /* ContentView.swift */; };
 		04E0571C2EEAB3EE00F90A44 /* SaveSystem.mm in Sources */ = {isa = PBXBuildFile; fileRef = 04E0566C2EEAB3EE00F90A44 /* SaveSystem.mm */; };
-		AABBCC0300000000000000A1 /* LockScreenAerialManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */; };
 		04E057382EEAB3EE00F90A44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 04E0565D2EEAB3EE00F90A44 /* Assets.xcassets */; };
 		04E057742EEAB43200F90A44 /* emitterstate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E0574A2EEAB43200F90A44 /* emitterstate.cpp */; };
 		04E057752EEAB43200F90A44 /* nodebuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E057562EEAB43200F90A44 /* nodebuilder.cpp */; };
@@ -57,6 +57,7 @@
 		04E057922EEAB43200F90A44 /* scanner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E057622EEAB43200F90A44 /* scanner.cpp */; };
 		04E057932EEAB43200F90A44 /* directives.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E057452EEAB43200F90A44 /* directives.cpp */; };
 		04F816E02EEBE3FB00CFB473 /* DisplayObjc.mm in Sources */ = {isa = PBXBuildFile; fileRef = 04F816DF2EEBE3FB00CFB473 /* DisplayObjc.mm */; };
+		AABBCC0300000000000000A1 /* LockScreenAerialManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -98,8 +99,6 @@
 		04E0566C2EEAB3EE00F90A44 /* SaveSystem.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = SaveSystem.mm; sourceTree = SOURCE_ROOT; };
 		04E056EF2EEAB3EE00F90A44 /* WallpaperEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WallpaperEngine.h; sourceTree = SOURCE_ROOT; };
 		04E056F02EEAB3EE00F90A44 /* WallpaperEngine.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = WallpaperEngine.mm; sourceTree = SOURCE_ROOT; };
-		AABBCC0100000000000000A1 /* LockScreenAerialManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LockScreenAerialManager.h; sourceTree = SOURCE_ROOT; };
-		AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LockScreenAerialManager.mm; sourceTree = SOURCE_ROOT; };
 		04E057392EEAB43200F90A44 /* dragonbox.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = dragonbox.h; sourceTree = "<group>"; };
 		04E0573A2EEAB43200F90A44 /* graphbuilder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = graphbuilder.cpp; sourceTree = "<group>"; };
 		04E0573B2EEAB43200F90A44 /* graphbuilderadapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = graphbuilderadapter.h; sourceTree = "<group>"; };
@@ -274,6 +273,8 @@
 		04E058962EEAB54E00F90A44 /* yaml-cpp.pc.in */ = {isa = PBXFileReference; lastKnownFileType = text; path = "yaml-cpp.pc.in"; sourceTree = "<group>"; };
 		04F816DE2EEBE3FB00CFB473 /* DisplayObjc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DisplayObjc.h; sourceTree = SOURCE_ROOT; };
 		04F816DF2EEBE3FB00CFB473 /* DisplayObjc.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DisplayObjc.mm; sourceTree = SOURCE_ROOT; };
+		AABBCC0100000000000000A1 /* LockScreenAerialManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LockScreenAerialManager.h; sourceTree = SOURCE_ROOT; };
+		AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LockScreenAerialManager.mm; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -302,6 +303,7 @@
 				04E055F32EEA8D6500F90A44 /* IOKit.framework in Frameworks */,
 				04E055F22EEA8D5C00F90A44 /* AVFoundation.framework in Frameworks */,
 				04E055F12EEA8D5700F90A44 /* Cocoa.framework in Frameworks */,
+				04E055F82EEA8DDA00F90A44 /* CoreMedia.framework in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -899,7 +901,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 44DJWYP5M6;
+				DEVELOPMENT_TEAM = BFZ4U4WXUC;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
@@ -953,7 +955,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 44DJWYP5M6;
+				DEVELOPMENT_TEAM = BFZ4U4WXUC;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
