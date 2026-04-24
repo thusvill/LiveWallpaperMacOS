@@ -189,13 +189,15 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
     NSString *sysSlot   = kSystemSlot;
     NSString *sysDir    = [sysSlot stringByDeletingLastPathComponent];
 
-    // Bash + Python3 script: creates cache dir, system dir, system slot symlink,
-    // and patches entries.json idempotently (checks shotID before appending).
+    // Create user-level cache dir without admin so symlink writes succeed later.
+    [[NSFileManager defaultManager] createDirectoryAtPath:cacheDir
+                                withIntermediateDirectories:YES attributes:nil error:nil];
+
+    // Privileged script: system dir + system slot symlink + entries.json patch.
     NSString *bash = [NSString stringWithFormat:
         @"#!/bin/bash\n"
          "set -e\n"
          "command -v python3 >/dev/null 2>&1 || { echo 'python3 not found' >&2; exit 1; }\n"
-         "mkdir -p '%@'\n"
          "mkdir -p '%@'\n"
          "ln -sf '%@' '%@'\n"
          "python3 << 'PYEOF'\n"
@@ -212,7 +214,7 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
          "with open(path, 'w') as f: json.dump(data, f, indent=2)\n"
          "PYEOF\n"
          "killall idleassetsd 2>/dev/null || true\n",
-        cacheDir, sysDir, cachePath, sysSlot, kEntriesJSON];
+        sysDir, cachePath, sysSlot, kEntriesJSON];
 
     NSString *scriptPath = @"/tmp/lw_lockscreen_setup.sh";
     NSError *writeErr;
