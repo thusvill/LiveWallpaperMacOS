@@ -1014,6 +1014,8 @@ class WallpaperViewModel: ObservableObject {
             var revertError: NSError?
             if !manager.revertIndexPlist(&revertError) {
                 lockScreenVideoError = revertError?.localizedDescription ?? "Failed to restore lock screen settings."
+            } else {
+                lockScreenVideoError = nil
             }
             defaults.set(false, forKey: UserDefaultsKeys.lockScreenVideo)
             lockScreenVideoEnabled = false
