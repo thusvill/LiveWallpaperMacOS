@@ -23,7 +23,8 @@ static NSString * const kSystemSlot   = @"/Library/Application Support/com.apple
 static NSString * const kEntriesJSON  = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json";
 static NSString * const kCacheSubpath = @"Library/Caches/com.thusvill.LiveWallpaper/lockscreen/current.mov";
 static NSString * const kIndexPlist   = @"Library/Application Support/com.apple.wallpaper/Store/Index.plist";
-static NSString * const kShotID       = @"livewallpaper_custom_001";
+static NSString * const kShotID        = @"livewallpaper_custom_001";
+static NSString * const kCustomAssetID = @"AABBCCDD-EEFF-0011-2233-445566778899";
 static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
 
 @implementation LockScreenAerialManager
@@ -119,18 +120,20 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
         if (saved) [[NSUserDefaults standardUserDefaults] setObject:saved forKey:kSavedChoicesKey];
     }
 
-    // Aerial-style choice dictionary — adjust if plutil shows a different structure
+    // Configuration: binary plist {'assetID': kCustomAssetID} — matches macOS 26 aerial format.
+    NSError *cfgErr;
+    NSData *configData = [NSPropertyListSerialization
+        dataWithPropertyList:@{@"assetID": kCustomAssetID}
+                      format:NSPropertyListBinaryFormat_v1_0
+                     options:0
+                       error:&cfgErr];
+    if (!configData) { if (outError) *outError = cfgErr; return NO; }
+
     content[@"Choices"] = @[@{
-        @"BackgroundColor": @{},
-        @"Provider": @{
-            @"Library": @{
-                @"Assets": @[@{
-                    @"Value": @{@"Identifier": kShotID}
-                }]
-            }
-        }
+        @"Configuration": configData,
+        @"Files": @[],
+        @"Provider": @"com.apple.wallpaper.choice.aerials"
     }];
-    content[@"UsesSingleChoice"] = @YES;
     idle[@"Content"]              = content;
     allSpaces[@"Idle"]            = idle;
     plist[@"AllSpacesAndDisplays"] = allSpaces;
@@ -203,14 +206,16 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
          "python3 << 'PYEOF'\n"
          "import json, sys\n"
          "path = '%@'\n"
+         "kID = 'AABBCCDD-EEFF-0011-2233-445566778899'\n"
          "try:\n"
          "    with open(path, 'r') as f: data = json.load(f)\n"
-         "except Exception: data = []\n"
-         "if not isinstance(data, list): data = [data]\n"
-         "if any(e.get('shotID') == 'livewallpaper_custom_001' for e in data): sys.exit(0)\n"
-         "sample = data[0] if data else {}\n"
-         "url_key = next((k for k in sample if '4K' in k and 'SDR' in k), 'url-4K-SDR-240FPS')\n"
-         "data.append({'shotID': 'livewallpaper_custom_001', 'localizedNameKey': 'LiveWallpaper Custom', url_key: '4KSDR240FPS/lw_slot.mov', 'previewImage': 'snapshots/lw_slot_preview.png'})\n"
+         "except Exception: data = [{}]\n"
+         "if not isinstance(data, list) or not data: data = [{}]\n"
+         "assets = data[0].get('assets', [])\n"
+         "if not isinstance(assets, list): assets = []\n"
+         "if any(e.get('id') == kID for e in assets): sys.exit(0)\n"
+         "assets.append({'id': kID, 'shotID': 'livewallpaper_custom_001', 'localizedNameKey': 'LiveWallpaper Custom', 'url-4K-SDR-240FPS': '4KSDR240FPS/lw_slot.mov', 'previewImage': 'snapshots/lw_slot_preview.png', 'showInTopLevel': True, 'includeInShuffle': False})\n"
+         "data[0]['assets'] = assets\n"
          "with open(path, 'w') as f: json.dump(data, f, indent=2)\n"
          "PYEOF\n"
          "killall idleassetsd 2>/dev/null || true\n",
