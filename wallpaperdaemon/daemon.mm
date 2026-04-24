@@ -366,7 +366,8 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
         self.wasPlayingBeforeSleep ? @"playing" : @"paused");
   self.screen_locked = true;
 
-  _lockVideoTime  = _players.firstObject.currentItem.currentTime;
+  AVPlayerItem *item = _players.firstObject.currentItem;
+  _lockVideoTime  = item ? item.currentTime : kCMTimeZero;
   _lockSystemTime = CFAbsoluteTimeGetCurrent();
   CMTime d = _asset.duration;
   _videoDuration = (CMTIME_IS_VALID(d) && !CMTIME_IS_INDEFINITE(d)) ? d : kCMTimeInvalid;
@@ -382,7 +383,27 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   self.screen_locked = false;
 
   if (self.wasPlayingBeforeSleep) {
+    // Set windows invisible first so the fade-in hides the WVE->daemon seam.
+    // Do NOT kill WallpaperVideoExtension — idleassetsd owns its lifecycle;
+    // killing it breaks the next lock cycle (black lock screen on re-lock).
+    for (NSWindow *window in _windows) {
+      window.alphaValue = 0.0;
+    }
+
+    // Block that resumes playback and fades windows back in.
+    void (^resumeAndFade)(void) = ^{
+      NSLog(@"[Daemon] Resuming playback after screen unlock");
+      [self resumeAllPlayers];
+      [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) {
+        ctx.duration = 0.4;
+        for (NSWindow *window in self->_windows) {
+          window.animator.alphaValue = 1.0;
+        }
+      }];
+    };
+
     // Seek to elapsed position so desktop resumes where the lock screen left off.
+    BOOL seekDispatched = NO;
     if (CMTIME_IS_VALID(_videoDuration) && !CMTIME_IS_INDEFINITE(_videoDuration)) {
       CFAbsoluteTime elapsed = CFAbsoluteTimeGetCurrent() - _lockSystemTime;
       double lockSecs        = CMTimeGetSeconds(_lockVideoTime);
@@ -390,28 +411,18 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
       if (durSecs > 0.0) {
         double resumeSecs = fmod(lockSecs + elapsed, durSecs);
         CMTime resumeTime = CMTimeMakeWithSeconds(resumeSecs, 600);
+        seekDispatched = YES;
         [_players.firstObject seekToTime:resumeTime
                        toleranceBefore:kCMTimeZero
-                        toleranceAfter:kCMTimeZero];
+                        toleranceAfter:kCMTimeZero
+                      completionHandler:^(BOOL finished) {
+          dispatch_async(dispatch_get_main_queue(), resumeAndFade);
+        }];
       }
     }
-
-    // Set windows to invisible so the fade-in hides the WVE->daemon seam.
-    // Do NOT kill WallpaperVideoExtension — idleassetsd owns its lifecycle;
-    // killing it breaks the next lock cycle (black lock screen on re-lock).
-    for (NSWindow *window in _windows) {
-      window.alphaValue = 0.0;
+    if (!seekDispatched) {
+      resumeAndFade();
     }
-
-    NSLog(@"[Daemon] Resuming playback after screen unlock");
-    [self resumeAllPlayers];
-
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *ctx) {
-      ctx.duration = 0.4;
-      for (NSWindow *window in self->_windows) {
-        window.animator.alphaValue = 1.0;
-      }
-    }];
   }
 
   dispatch_after(
