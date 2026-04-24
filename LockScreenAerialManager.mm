@@ -181,7 +181,66 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
     return [out writeToFile:path options:NSDataWritingAtomic error:outError];
 }
 
-// performPrivilegedSetupWithVideoPath:completion: — implemented in Task 2
-// kEntriesJSON = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json"
+- (void)performPrivilegedSetupWithVideoPath:(NSString *)videoPath
+                                 completion:(void(^)(NSError * _Nullable))completion {
+    NSString *home      = NSHomeDirectory();
+    NSString *cacheDir  = [home stringByAppendingPathComponent:
+                            @"Library/Caches/com.thusvill.LiveWallpaper/lockscreen"];
+    NSString *cachePath = [cacheDir stringByAppendingPathComponent:@"current.mov"];
+    NSString *sysDir    = @"/Library/Application Support/com.apple.idleassetsd/Customer/4KSDR240FPS";
+    NSString *sysSlot   = [sysDir stringByAppendingPathComponent:@"lw_slot.mov"];
+    NSString *entries   = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json";
+
+    // Bash + Python3 script: creates cache dir, system dir, system slot symlink,
+    // and patches entries.json idempotently (checks shotID before appending).
+    NSString *bash = [NSString stringWithFormat:
+        @"#!/bin/bash\n"
+         "set -e\n"
+         "mkdir -p '%@'\n"
+         "mkdir -p '%@'\n"
+         "ln -sf '%@' '%@'\n"
+         "python3 << 'PYEOF'\n"
+         "import json, sys\n"
+         "path = '%@'\n"
+         "try:\n"
+         "    with open(path, 'r') as f: data = json.load(f)\n"
+         "except Exception: data = []\n"
+         "if not isinstance(data, list): data = [data]\n"
+         "if any(e.get('shotID') == 'livewallpaper_custom_001' for e in data): sys.exit(0)\n"
+         "sample = data[0] if data else {}\n"
+         "url_key = next((k for k in sample if '4K' in k and 'SDR' in k), 'url-4K-SDR-240FPS')\n"
+         "data.append({'shotID': 'livewallpaper_custom_001', 'localizedNameKey': 'LiveWallpaper Custom', url_key: '4KSDR240FPS/lw_slot.mov', 'previewImage': 'snapshots/lw_slot_preview.png'})\n"
+         "with open(path, 'w') as f: json.dump(data, f, indent=2)\n"
+         "PYEOF\n",
+        cacheDir, sysDir, cachePath, sysSlot, entries];
+
+    NSString *scriptPath = [NSTemporaryDirectory()
+        stringByAppendingPathComponent:@"lw_lockscreen_setup.sh"];
+    NSError *writeErr;
+    [bash writeToFile:scriptPath atomically:YES encoding:NSUTF8StringEncoding error:&writeErr];
+    if (writeErr) { completion(writeErr); return; }
+
+    // NSAppleScript must run on main thread; dispatch so the caller doesn't block the UI.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *src = [NSString stringWithFormat:
+            @"do shell script \"bash '%@'\" with administrator privileges", scriptPath];
+        NSAppleScript *as = [[NSAppleScript alloc] initWithSource:src];
+        NSDictionary *errDict;
+        [as executeAndReturnError:&errDict];
+        [[NSFileManager defaultManager] removeItemAtPath:scriptPath error:nil];
+
+        if (errDict) {
+            NSInteger code = [errDict[NSAppleScriptErrorNumber] integerValue];
+            NSString *msg  = errDict[NSAppleScriptErrorMessage] ?: @"Privileged setup failed";
+            NSError *err   = [NSError errorWithDomain:@"LockScreenAerialManager"
+                code:code userInfo:@{NSLocalizedDescriptionKey: msg}];
+            completion(err);
+            return;
+        }
+
+        if (videoPath.length > 0) [self updateUserSymlink:videoPath];
+        completion(nil);
+    });
+}
 
 @end
