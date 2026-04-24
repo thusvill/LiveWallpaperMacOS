@@ -57,3 +57,7 @@
 "language_changed_title" = "Language Changed";
 "language_changed_message" = "Please restart the app for the language change to take effect.";
 "ok" = "OK";
+
+// MARK: - Lock Screen
+"lock_screen_video" = "Lock Screen Video 🔒";
+"lock_screen_video_subtitle" = "Requires one-time administrator access";

@@ -138,6 +138,8 @@ enum L {
         "Vignette bar (Reapply the wallpaper after change)", comment: "")
 
     static let rotationDelay = NSLocalizedString("Wallpaper rotation delay", comment: "")
+    static let lockScreenVideo = NSLocalizedString("lock_screen_video", comment: "")
+    static let lockScreenVideoSubtitle = NSLocalizedString("lock_screen_video_subtitle", comment: "")
 }
 
 // MARK: - UserDefaults Keys
@@ -154,6 +156,7 @@ enum UserDefaultsKeys {
     static let rotation = "rotation"
     static let rdelay = "rdelay"
     static let rtype = "rtype"
+    static let lockScreenVideo = "lockscreenVideoEnabled"
 
 }
 
@@ -782,6 +785,31 @@ struct SettingsView: View {
                             viewModel.resetUserData()
                         }
                     }
+
+                    Divider()
+
+                    // Lock Screen Video
+                    VStack(alignment: .leading, spacing: 4) {
+                        SettingRow(title: L.lockScreenVideo) {
+                            Toggle("", isOn: Binding(
+                                get: { viewModel.lockScreenVideoEnabled },
+                                set: { viewModel.setLockScreenVideo($0) }
+                            ))
+                            .toggleStyle(.switch)
+                        }
+                        if let subtitle = Optional(L.lockScreenVideoSubtitle), !viewModel.lockScreenVideoEnabled {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 8)
+                        }
+                        if let error = viewModel.lockScreenVideoError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundColor(.red)
+                                .padding(.leading, 8)
+                        }
+                    }
                 }
                 .padding()
             }
@@ -924,6 +952,8 @@ class WallpaperViewModel: ObservableObject {
     @Published var pauseOnAppFocus: Bool = true
     @Published var volume: Double = 50.0
     @Published var vinttageBar: Bool = true
+    @Published var lockScreenVideoEnabled: Bool = false
+    @Published var lockScreenVideoError: String? = nil
 
     private var currentReloadID = UUID()
     private let reloadIDLock = NSLock()
@@ -947,6 +977,39 @@ class WallpaperViewModel: ObservableObject {
         pauseOnAppFocus = defaults.bool(forKey: UserDefaultsKeys.pauseOnAppFocus)
         volume = Double(defaults.float(forKey: UserDefaultsKeys.volumePercentage))
         vinttageBar = defaults.bool(forKey: UserDefaultsKeys.vignetteBar)
+        lockScreenVideoEnabled = defaults.bool(forKey: UserDefaultsKeys.lockScreenVideo)
+    }
+
+    func setLockScreenVideo(_ enabled: Bool) {
+        let manager = LockScreenAerialManager.shared()
+        if enabled {
+            let videoPath = engine.currentVideoPath as String? ?? ""
+            if manager.isSystemSlotInstalled {
+                manager.updateUserSymlink(videoPath)
+                defaults.set(true, forKey: UserDefaultsKeys.lockScreenVideo)
+                lockScreenVideoEnabled = true
+                lockScreenVideoError = nil
+            } else {
+                manager.performPrivilegedSetup(withVideoPath: videoPath) { [weak self] error in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if let error {
+                            self.lockScreenVideoError = error.localizedDescription
+                            self.lockScreenVideoEnabled = false
+                        } else {
+                            self.defaults.set(true, forKey: UserDefaultsKeys.lockScreenVideo)
+                            self.lockScreenVideoEnabled = true
+                            self.lockScreenVideoError = nil
+                        }
+                    }
+                }
+            }
+        } else {
+            _ = manager.revertIndexPlist(nil)
+            defaults.set(false, forKey: UserDefaultsKeys.lockScreenVideo)
+            lockScreenVideoEnabled = false
+            lockScreenVideoError = nil
+        }
     }
 
     func reloadContent() {

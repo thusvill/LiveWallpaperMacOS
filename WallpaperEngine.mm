@@ -17,6 +17,7 @@
  */
 
 #import "WallpaperEngine.h"
+#import "LockScreenAerialManager.h"
 #include "DisplayObjc.h"
 #include "SaveSystem.h"
 #import <CoreGraphics/CoreGraphics.h>
@@ -949,6 +950,9 @@ static NSString *folderPath = nil;
   }
 
   self.currentVideoPath = videoPath;
+  if ([NSUserDefaults.standardUserDefaults boolForKey:@"lockscreenVideoEnabled"]) {
+    [LockScreenAerialManager.shared updateUserSymlink:videoPath];
+  }
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   [defaults setObject:videoPath forKey:@"LastWallpaperPath"];
   [defaults synchronize];
