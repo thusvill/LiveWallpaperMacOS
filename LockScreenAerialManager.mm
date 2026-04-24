@@ -20,6 +20,7 @@
 #import <CoreMedia/CoreMedia.h>
 
 static NSString * const kSystemSlot   = @"/Library/Application Support/com.apple.idleassetsd/Customer/4KSDR240FPS/lw_slot.mov";
+static NSString * const kEntriesJSON  = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json";
 static NSString * const kCacheSubpath = @"Library/Caches/com.thusvill.LiveWallpaper/lockscreen/current.mov";
 static NSString * const kIndexPlist   = @"Library/Application Support/com.apple.wallpaper/Store/Index.plist";
 static NSString * const kShotID       = @"livewallpaper_custom_001";
@@ -183,19 +184,17 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
 
 - (void)performPrivilegedSetupWithVideoPath:(NSString *)videoPath
                                  completion:(void(^)(NSError * _Nullable))completion {
-    NSString *home      = NSHomeDirectory();
-    NSString *cacheDir  = [home stringByAppendingPathComponent:
-                            @"Library/Caches/com.thusvill.LiveWallpaper/lockscreen"];
-    NSString *cachePath = [cacheDir stringByAppendingPathComponent:@"current.mov"];
-    NSString *sysDir    = @"/Library/Application Support/com.apple.idleassetsd/Customer/4KSDR240FPS";
-    NSString *sysSlot   = [sysDir stringByAppendingPathComponent:@"lw_slot.mov"];
-    NSString *entries   = @"/Library/Application Support/com.apple.idleassetsd/Customer/entries.json";
+    NSString *cachePath = self.userCachePath;
+    NSString *cacheDir  = [cachePath stringByDeletingLastPathComponent];
+    NSString *sysSlot   = kSystemSlot;
+    NSString *sysDir    = [sysSlot stringByDeletingLastPathComponent];
 
     // Bash + Python3 script: creates cache dir, system dir, system slot symlink,
     // and patches entries.json idempotently (checks shotID before appending).
     NSString *bash = [NSString stringWithFormat:
         @"#!/bin/bash\n"
          "set -e\n"
+         "command -v python3 >/dev/null 2>&1 || { echo 'python3 not found' >&2; exit 1; }\n"
          "mkdir -p '%@'\n"
          "mkdir -p '%@'\n"
          "ln -sf '%@' '%@'\n"
@@ -212,10 +211,9 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
          "data.append({'shotID': 'livewallpaper_custom_001', 'localizedNameKey': 'LiveWallpaper Custom', url_key: '4KSDR240FPS/lw_slot.mov', 'previewImage': 'snapshots/lw_slot_preview.png'})\n"
          "with open(path, 'w') as f: json.dump(data, f, indent=2)\n"
          "PYEOF\n",
-        cacheDir, sysDir, cachePath, sysSlot, entries];
+        cacheDir, sysDir, cachePath, sysSlot, kEntriesJSON];
 
-    NSString *scriptPath = [NSTemporaryDirectory()
-        stringByAppendingPathComponent:@"lw_lockscreen_setup.sh"];
+    NSString *scriptPath = @"/tmp/lw_lockscreen_setup.sh";
     NSError *writeErr;
     [bash writeToFile:scriptPath atomically:YES encoding:NSUTF8StringEncoding error:&writeErr];
     if (writeErr) { completion(writeErr); return; }
@@ -230,7 +228,8 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
         [[NSFileManager defaultManager] removeItemAtPath:scriptPath error:nil];
 
         if (errDict) {
-            NSInteger code = [errDict[NSAppleScriptErrorNumber] integerValue];
+            NSNumber *codeNum = errDict[NSAppleScriptErrorNumber];
+            NSInteger code    = codeNum ? codeNum.integerValue : -1;
             NSString *msg  = errDict[NSAppleScriptErrorMessage] ?: @"Privileged setup failed";
             NSError *err   = [NSError errorWithDomain:@"LockScreenAerialManager"
                 code:code userInfo:@{NSLocalizedDescriptionKey: msg}];
