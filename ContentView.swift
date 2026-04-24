@@ -1003,7 +1003,7 @@ class WallpaperViewModel: ObservableObject {
                             self.lockScreenVideoError = error.localizedDescription
                             self.lockScreenVideoEnabled = false
                         } else {
-                            manager.writeIndexPlist(nil)
+                            LockScreenAerialManager.shared().writeIndexPlist(nil)
                             self.defaults.set(true, forKey: UserDefaultsKeys.lockScreenVideo)
                             self.lockScreenVideoEnabled = true
                             self.lockScreenVideoError = nil
