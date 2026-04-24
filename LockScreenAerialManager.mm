@@ -210,7 +210,8 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
          "url_key = next((k for k in sample if '4K' in k and 'SDR' in k), 'url-4K-SDR-240FPS')\n"
          "data.append({'shotID': 'livewallpaper_custom_001', 'localizedNameKey': 'LiveWallpaper Custom', url_key: '4KSDR240FPS/lw_slot.mov', 'previewImage': 'snapshots/lw_slot_preview.png'})\n"
          "with open(path, 'w') as f: json.dump(data, f, indent=2)\n"
-         "PYEOF\n",
+         "PYEOF\n"
+         "killall idleassetsd 2>/dev/null || true\n",
         cacheDir, sysDir, cachePath, sysSlot, kEntriesJSON];
 
     NSString *scriptPath = @"/tmp/lw_lockscreen_setup.sh";

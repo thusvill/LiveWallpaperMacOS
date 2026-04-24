@@ -38,10 +38,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)updateUserSymlink:(NSString *)videoPath;
 
 /// Writes Index.plist to select livewallpaper_custom_001 as active lock screen asset.
-- (BOOL)writeIndexPlist:(NSError **)error;
+/// NS_SWIFT_NOTHROW: not imported as throws; pass nil to ignore errors.
+- (BOOL)writeIndexPlist:(NSError * _Nullable * _Nullable)error NS_SWIFT_NOTHROW;
 
 /// Reverts Index.plist to value saved before writeIndexPlist was first called.
-- (BOOL)revertIndexPlist:(NSError **)error;
+/// NS_SWIFT_NOTHROW: not imported as throws; pass nil to ignore errors.
+- (BOOL)revertIndexPlist:(NSError * _Nullable * _Nullable)error NS_SWIFT_NOTHROW;
 
 /// Admin-required: creates system slot symlink + patches entries.json via NSAppleScript.
 /// Calls updateUserSymlink: after success. Completion always fires on main thread.
