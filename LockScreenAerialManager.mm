@@ -46,6 +46,19 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
     return [NSHomeDirectory() stringByAppendingPathComponent:kCacheSubpath];
 }
 
+- (BOOL)isEntriesJsonPatched {
+    NSData *data = [NSData dataWithContentsOfFile:kEntriesJSON];
+    if (!data) return NO;
+    NSArray *root = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![root isKindOfClass:[NSArray class]] || root.count == 0) return NO;
+    NSArray *assets = root[0][@"assets"];
+    if (![assets isKindOfClass:[NSArray class]]) return NO;
+    for (NSDictionary *asset in assets) {
+        if ([asset[@"id"] isEqualToString:kCustomAssetID]) return YES;
+    }
+    return NO;
+}
+
 - (BOOL)isVideoCodecSupported:(NSString *)videoPath {
     if ([videoPath.pathExtension.lowercaseString isEqualToString:@"mov"]) return YES;
     NSURL *url = [NSURL fileURLWithPath:videoPath];
@@ -144,7 +157,12 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
                      options:0
                        error:outError];
     if (!out) return NO;
-    return [out writeToFile:path options:NSDataWritingAtomic error:outError];
+    BOOL ok = [out writeToFile:path options:NSDataWritingAtomic error:outError];
+    if (ok) {
+        // WallpaperAgent must reload to apply Index.plist changes; it runs as current user.
+        [NSTask launchedTaskWithLaunchPath:@"/usr/bin/killall" arguments:@[@"WallpaperAgent"]];
+    }
+    return ok;
 }
 
 - (BOOL)revertIndexPlist:(NSError **)outError {
@@ -182,7 +200,12 @@ static NSString * const kSavedChoicesKey = @"lockscreenPreviousChoices";
                      options:0
                        error:outError];
     if (!out) return NO;
-    return [out writeToFile:path options:NSDataWritingAtomic error:outError];
+    BOOL ok = [out writeToFile:path options:NSDataWritingAtomic error:outError];
+    if (ok) {
+        // WallpaperAgent must reload to apply Index.plist changes; it runs as current user.
+        [NSTask launchedTaskWithLaunchPath:@"/usr/bin/killall" arguments:@[@"WallpaperAgent"]];
+    }
+    return ok;
 }
 
 - (void)performPrivilegedSetupWithVideoPath:(NSString *)videoPath

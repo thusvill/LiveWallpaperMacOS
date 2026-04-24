@@ -28,6 +28,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// YES after privileged setup has created the system-level symlink slot.
 @property (nonatomic, readonly) BOOL isSystemSlotInstalled;
 
+/// YES if entries.json already contains the custom asset UUID (readable without admin).
+@property (nonatomic, readonly) BOOL isEntriesJsonPatched;
+
 /// Absolute path: ~/Library/Caches/com.thusvill.LiveWallpaper/lockscreen/current.mov
 @property (nonatomic, readonly) NSString *userCachePath;
 

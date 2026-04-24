@@ -989,7 +989,7 @@ class WallpaperViewModel: ObservableObject {
                 return
             }
             let videoPath = rawPath
-            if manager.isSystemSlotInstalled {
+            if manager.isSystemSlotInstalled && manager.isEntriesJsonPatched {
                 manager.updateUserSymlink(videoPath)
                 manager.writeIndexPlist(nil)
                 defaults.set(true, forKey: UserDefaultsKeys.lockScreenVideo)
