@@ -797,8 +797,8 @@ struct SettingsView: View {
                             ))
                             .toggleStyle(.switch)
                         }
-                        if let subtitle = Optional(L.lockScreenVideoSubtitle), !viewModel.lockScreenVideoEnabled {
-                            Text(subtitle)
+                        if !viewModel.lockScreenVideoEnabled {
+                            Text(L.lockScreenVideoSubtitle)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .padding(.leading, 8)
@@ -983,9 +983,15 @@ class WallpaperViewModel: ObservableObject {
     func setLockScreenVideo(_ enabled: Bool) {
         let manager = LockScreenAerialManager.shared()
         if enabled {
-            let videoPath = engine.currentVideoPath as String? ?? ""
+            guard let rawPath = engine.currentVideoPath as String?, !rawPath.isEmpty else {
+                lockScreenVideoError = "No wallpaper is currently active."
+                lockScreenVideoEnabled = false
+                return
+            }
+            let videoPath = rawPath
             if manager.isSystemSlotInstalled {
                 manager.updateUserSymlink(videoPath)
+                _ = manager.writeIndexPlist(nil)
                 defaults.set(true, forKey: UserDefaultsKeys.lockScreenVideo)
                 lockScreenVideoEnabled = true
                 lockScreenVideoError = nil
@@ -1005,10 +1011,12 @@ class WallpaperViewModel: ObservableObject {
                 }
             }
         } else {
-            _ = manager.revertIndexPlist(nil)
+            var revertError: NSError?
+            if !manager.revertIndexPlist(&revertError) {
+                lockScreenVideoError = revertError?.localizedDescription ?? "Failed to restore lock screen settings."
+            }
             defaults.set(false, forKey: UserDefaultsKeys.lockScreenVideo)
             lockScreenVideoEnabled = false
-            lockScreenVideoError = nil
         }
     }
 
