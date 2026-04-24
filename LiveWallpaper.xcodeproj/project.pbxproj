@@ -22,6 +22,7 @@
 		04E0570B2EEAB3EE00F90A44 /* WallpaperEngine.mm in Sources */ = {isa = PBXBuildFile; fileRef = 04E056F02EEAB3EE00F90A44 /* WallpaperEngine.mm */; };
 		04E057192EEAB3EE00F90A44 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E0565F2EEAB3EE00F90A44 /* ContentView.swift */; };
 		04E0571C2EEAB3EE00F90A44 /* SaveSystem.mm in Sources */ = {isa = PBXBuildFile; fileRef = 04E0566C2EEAB3EE00F90A44 /* SaveSystem.mm */; };
+		AABBCC0300000000000000A1 /* LockScreenAerialManager.mm in Sources */ = {isa = PBXBuildFile; fileRef = AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */; };
 		04E057382EEAB3EE00F90A44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 04E0565D2EEAB3EE00F90A44 /* Assets.xcassets */; };
 		04E057742EEAB43200F90A44 /* emitterstate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E0574A2EEAB43200F90A44 /* emitterstate.cpp */; };
 		04E057752EEAB43200F90A44 /* nodebuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E057562EEAB43200F90A44 /* nodebuilder.cpp */; };
@@ -97,6 +98,8 @@
 		04E0566C2EEAB3EE00F90A44 /* SaveSystem.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = SaveSystem.mm; sourceTree = SOURCE_ROOT; };
 		04E056EF2EEAB3EE00F90A44 /* WallpaperEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WallpaperEngine.h; sourceTree = SOURCE_ROOT; };
 		04E056F02EEAB3EE00F90A44 /* WallpaperEngine.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = WallpaperEngine.mm; sourceTree = SOURCE_ROOT; };
+		AABBCC0100000000000000A1 /* LockScreenAerialManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LockScreenAerialManager.h; sourceTree = SOURCE_ROOT; };
+		AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = LockScreenAerialManager.mm; sourceTree = SOURCE_ROOT; };
 		04E057392EEAB43200F90A44 /* dragonbox.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = dragonbox.h; sourceTree = "<group>"; };
 		04E0573A2EEAB43200F90A44 /* graphbuilder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = graphbuilder.cpp; sourceTree = "<group>"; };
 		04E0573B2EEAB43200F90A44 /* graphbuilderadapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = graphbuilderadapter.h; sourceTree = "<group>"; };
@@ -351,6 +354,8 @@
 				04E0566C2EEAB3EE00F90A44 /* SaveSystem.mm */,
 				04E056EF2EEAB3EE00F90A44 /* WallpaperEngine.h */,
 				04E056F02EEAB3EE00F90A44 /* WallpaperEngine.mm */,
+				AABBCC0100000000000000A1 /* LockScreenAerialManager.h */,
+				AABBCC0200000000000000A1 /* LockScreenAerialManager.mm */,
 				04F816DE2EEBE3FB00CFB473 /* DisplayObjc.h */,
 				04F816DF2EEBE3FB00CFB473 /* DisplayObjc.mm */,
 				04E057732EEAB43200F90A44 /* src */,
@@ -752,6 +757,7 @@
 				04E0570B2EEAB3EE00F90A44 /* WallpaperEngine.mm in Sources */,
 				04E057192EEAB3EE00F90A44 /* ContentView.swift in Sources */,
 				04E0571C2EEAB3EE00F90A44 /* SaveSystem.mm in Sources */,
+				AABBCC0300000000000000A1 /* LockScreenAerialManager.mm in Sources */,
 			);
 		};
 		04E055E42EEA8D2C00F90A44 /* Sources */ = {
