@@ -48,6 +48,27 @@ Click the "OpenInFinder" button and it'll open a folder, you can place wallpaper
 
 > https://github.com/user-attachments/assets/3d82e07d-b6b9-4a7d-b6de-5dd05dff3128
 
+## Lock Screen Video
+
+LiveWallpaper can play your current wallpaper video on the macOS lock screen using Apple's native Aerial system.
+
+**Requirements:**
+- Video format: `.mov` (H.264 or HEVC) or `.mp4` (H.264 or HEVC)
+- macOS 14+
+
+**Setup:**
+
+1. Select a wallpaper video in the main window
+2. Open **Settings** and enable **Lock Screen Video 🔒**
+3. The first time, a one-time administrator password prompt will appear — this installs a system slot for the lock screen asset
+4. Lock your screen to verify playback
+
+> [!NOTE]
+> The administrator prompt appears only once per machine. Subsequent wallpaper changes update without elevated privileges.
+
+> [!IMPORTANT]
+> The lock screen video follows the desktop wallpaper. Changing the active wallpaper automatically updates the lock screen when the toggle is enabled.
+
 ## Bug reports
 
 Post bugs with result of following command.
@@ -58,7 +79,7 @@ Post bugs with result of following command.
 
 > ![Application](./asset/application.png)
 
-> ## This is a static image, currently LiveWallpaper doesn't support videos on the lock screen.
+> ## Lock screen video wallpaper is now supported — enable it in Settings.
 > ![lockscreen](./asset/lockscreen.png)
 
 > ![settings](./asset/settings.png)
