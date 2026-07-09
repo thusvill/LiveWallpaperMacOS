@@ -1099,40 +1099,37 @@ static NSString *folderPath = nil;
   return path;
 }
 
-- (void)checkWallpapers{
-    if(_wallpaperList.count > 0){
-        [_wallpaperList removeAllObjects];
-    }
-    
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSError *error = nil;
-    folderPath = [self getFolderPath];
-    NSArray<NSString *> *allFiles =
-        [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
+- (void)checkWallpapers {
+  if (!_wallpaperList) {
+    _wallpaperList = [NSMutableArray array];
+  } else {
+    [_wallpaperList removeAllObjects];
+  }
 
-    if (error) {
-      NSLog(@"Error reading directory: %@", error.localizedDescription);
-        NSLog(@"Wallaper List returns Empty");
-        return;
-      
-    }
-    
-    for (NSString *fileName in allFiles) {
-      NSString *fileExtension = [[fileName pathExtension] lowercaseString];
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSError *error = nil;
+  folderPath = [self getFolderPath];
+  NSArray<NSString *> *allFiles =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
 
-      if ([fileExtension isEqualToString:@"mp4"] ||
-          [fileExtension isEqualToString:@"mov"]) {
-        NSString *fullPath = [folderPath stringByAppendingPathComponent:fileName];
-        [_wallpaperList addObject:fullPath];
-          NSLog(@"detected %@", fullPath);
-      }
-    }
+  if (error || !allFiles) {
+    NSLog(@"Error reading directory: %@", error.localizedDescription);
+    return;
+  }
 
-    if (_wallpaperList.count == 0) {
-        NSLog(@"Folder is empty, return zero for playlist");
-        return;
+  for (NSString *fileName in allFiles) {
+    NSString *fileExtension = [[fileName pathExtension] lowercaseString];
+    if ([fileExtension isEqualToString:@"mp4"] ||
+        [fileExtension isEqualToString:@"mov"] ||
+        [fileExtension isEqualToString:@"m4v"]) {
+      NSString *fullPath =
+          [folderPath stringByAppendingPathComponent:fileName];
+      [_wallpaperList addObject:fullPath];
     }
-    
+  }
+
+  NSLog(@"Playlist has %lu videos from %@", (unsigned long)_wallpaperList.count,
+        folderPath);
 }
 
 -(void) nextWallpaper{
@@ -1165,23 +1162,30 @@ static NSString *folderPath = nil;
     self.wallpaperTimer = nil;
     NSLog(@"Wallpaper rotation stoped.");
 }
-- (void)startWallpaperRotation{
-    int delay = _rotationDelay;
-    [self stopWallpaperRotation];
-    [self checkWallpapers];
-    
-    if (_currentWallpaper >= _wallpaperList.count) {
-            _currentWallpaper = 0;
-        }
+- (void)startWallpaperRotation {
+  int delay = _rotationDelay > 0 ? _rotationDelay : 60;
+  [self stopWallpaperRotation];
+  [self checkWallpapers];
 
-    self.wallpaperTimer = [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
-                                                           target:self
-                                                         selector:@selector(nextWallpaper)
-                                                         userInfo:nil
-                                                          repeats:YES];
-    
-    [self.wallpaperTimer fire];
-    NSLog(@"Wallpaper rotation started with %d delay.", delay);
+  if (!_wallpaperList || _wallpaperList.count == 0) {
+    NSLog(@"Wallpaper rotation not started — empty playlist");
+    return;
+  }
+
+  if (_currentWallpaper < 0 ||
+      _currentWallpaper >= (int)_wallpaperList.count) {
+    _currentWallpaper = 0;
+  }
+
+  self.wallpaperTimer =
+      [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
+                                       target:self
+                                     selector:@selector(nextWallpaper)
+                                     userInfo:nil
+                                      repeats:YES];
+  // Avoid immediate fire at launch — pairs badly with restore-on-init.
+  NSLog(@"Wallpaper rotation started with %d s delay, %lu items.", delay,
+        (unsigned long)_wallpaperList.count);
 }
 
 - (void)scanDisplays {
