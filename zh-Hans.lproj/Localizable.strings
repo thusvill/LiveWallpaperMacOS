@@ -21,15 +21,26 @@
 "show_in_finder" = "在 Finder 中显示 🗂";
 "video_scaling_mode" = "视频缩放模式";
 "random_on_startup" = "启动时随机壁纸";
-"random_on_lid" = "开盖唤醒时随机壁纸（需要重启应用）";
+"random_on_lid" = "开盖唤醒时随机壁纸";
 "pause_when_active" = "应用激活时暂停";
 "video_volume" = "视频音量";
 "optimize_codecs" = "优化视频编码";
-"optimize" = "优化 🛠️";
+"optimize" = "优化";
 "clear_cache" = "清除缓存";
-"clear_cache_button" = "清除缓存 🗑️";
+"clear_cache_button" = "清除缓存";
 "reset_userdata" = "重置用户数据";
 "reset" = "重置";
+"launch_at_login" = "登录时启动";
+"vignette_bar" = "顶部暗角条（更改后请重新应用壁纸）";
+"wallpaper_rotation" = "壁纸轮换";
+"wallpaper_rotation_type" = "壁纸轮换类型";
+"wallpaper_rotation_delay" = "壁纸轮换间隔";
+"rotation_sequential" = "顺序";
+"rotation_random" = "随机";
+"engine_loading" = "引擎加载中…";
+"optimize_running" = "正在优化…";
+"optimize_done" = "优化完成";
+"optimize_done_detail" = "已转换: %ld  已跳过: %ld  失败: %ld";
 
 // MARK: - 缩放模式
 "scale_fill" = "填充";

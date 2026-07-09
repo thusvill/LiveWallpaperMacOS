@@ -21,22 +21,33 @@
 "show_in_finder" = "Show in Finder 🗂";
 "video_scaling_mode" = "Video Scaling Mode";
 "random_on_startup" = "Random Wallpaper on Startup";
-"random_on_lid" = "Random Wallpaper on Lid Wakeup (Requires Application Restart)";
+"random_on_lid" = "Random Wallpaper on Lid Wakeup";
 "pause_when_active" = "Pause When App is Active";
 "video_volume" = "Video Volume";
 "optimize_codecs" = "Optimize Video Codecs";
-"optimize" = "Optimize 🛠️";
+"optimize" = "Optimize";
 "clear_cache" = "Clear Cache";
-"clear_cache_button" = "Clear Cache 🗑️";
-"reset_userdata" = "Reset UserData";
+"clear_cache_button" = "Clear Cache";
+"reset_userdata" = "Reset User Data";
 "reset" = "Reset";
+"launch_at_login" = "Launch at Login";
+"vignette_bar" = "Vignette bar (reapply wallpaper after change)";
+"wallpaper_rotation" = "Wallpaper rotation";
+"wallpaper_rotation_type" = "Wallpaper rotation type";
+"wallpaper_rotation_delay" = "Wallpaper rotation delay";
+"rotation_sequential" = "Sequential";
+"rotation_random" = "Random";
+"engine_loading" = "Engine loading…";
+"optimize_running" = "Optimizing…";
+"optimize_done" = "Optimization complete";
+"optimize_done_detail" = "Converted: %ld  Skipped: %ld  Failed: %ld";
 
 // MARK: - Scaling Modes
 "scale_fill" = "Fill";
 "scale_fit" = "Fit";
 "scale_stretch" = "Stretch";
 "scale_center" = "Center";
-"scale_height_fill" = "HeightFill";
+"scale_height_fill" = "Height Fill";
 
 // MARK: - Menu Bar
 "show_window" = "Show Window";
@@ -50,6 +61,7 @@
 
 // MARK: - Display
 "display_resolution" = "%@ x %@";
+"display_unknown" = "Unknown Display";
 
 // MARK: - Language
 "app_language" = "App Language";
@@ -57,3 +69,9 @@
 "language_changed_title" = "Language Changed";
 "language_changed_message" = "Please restart the app for the language change to take effect.";
 "ok" = "OK";
+
+// MARK: - Quality labels
+"quality_4k" = "4K";
+"quality_2k" = "2K";
+"quality_1080p" = "1080p";
+"quality_720p" = "720p";
