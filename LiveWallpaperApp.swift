@@ -17,11 +17,69 @@
  */
 
 import SwiftUI
+import Darwin
 import AppKit
 import ApplicationServices
 import ServiceManagement
 
 let sharedEngine = WallpaperEngine.shared()
+
+
+// MARK: - Single instance (one menu-bar icon)
+
+/// Exclusive flock so Login Items + LaunchAgents cannot both own a status item.
+enum LiveWallpaperSingleInstance {
+    private static var lockFD: Int32 = -1
+    private static let lockRelativePath =
+        "Library/Application Support/LiveWallpaper/instance.lock"
+
+    /// - Returns: true if this process is the sole owner.
+    /// Secondary launches exit silently (do not ask primary to show its window —
+    /// that caused the config window to pop open on every KeepAlive restart).
+    @discardableResult
+    static func tryBecomePrimary() -> Bool {
+        let myPID = ProcessInfo.processInfo.processIdentifier
+        if let bundleID = Bundle.main.bundleIdentifier {
+            let peers = NSWorkspace.shared.runningApplications.filter {
+                $0.bundleIdentifier == bundleID
+                    && $0.processIdentifier != myPID
+                    && !$0.isTerminated
+            }
+            if !peers.isEmpty {
+                return false
+            }
+        }
+
+        let lockPath = (NSHomeDirectory() as NSString)
+            .appendingPathComponent(lockRelativePath)
+        let dir = (lockPath as NSString).deletingLastPathComponent
+        try? FileManager.default.createDirectory(
+            atPath: dir, withIntermediateDirectories: true, attributes: nil)
+
+        let fd = open(lockPath, O_CREAT | O_RDWR, 0o644)
+        if fd < 0 {
+            return true
+        }
+        if flock(fd, LOCK_EX | LOCK_NB) != 0 {
+            close(fd)
+            return false
+        }
+        ftruncate(fd, 0)
+        lseek(fd, 0, SEEK_SET)
+        let pidStr = "\(myPID)\n"
+        _ = pidStr.withCString { write(fd, $0, strlen($0)) }
+        lockFD = fd
+        return true
+    }
+
+    static func release() {
+        if lockFD >= 0 {
+            flock(lockFD, LOCK_UN)
+            close(lockFD)
+            lockFD = -1
+        }
+    }
+}
 
 @main
 struct LiveWallpaperApp: App {
@@ -36,18 +94,31 @@ struct LiveWallpaperApp: App {
 
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    var statusItem: NSStatusItem!
+    private var isPrimaryInstance = false
+
+    var statusItem: NSStatusItem?
     var window: NSWindow!
     
     let engine = sharedEngine
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        if !LiveWallpaperSingleInstance.tryBecomePrimary() {
+            isPrimaryInstance = false
+            DispatchQueue.main.async { NSApp.terminate(nil) }
+            return
+        }
+        isPrimaryInstance = true
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard isPrimaryInstance else { return }
+
         
         NSApp.setActivationPolicy(.accessory)
 
         
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem.button {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        if let button = item.button {
             button.image = NSImage(systemSymbolName: "play.desktopcomputer", accessibilityDescription: "Live Wallpaper")
         }
 
@@ -57,7 +128,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: NSLocalizedString("Hide window", comment: ""), action: #selector(hideWindow), keyEquivalent: "h"))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: NSLocalizedString("Quit", comment: ""), action: #selector(quit), keyEquivalent: "q"))
-        statusItem.menu = menu
+        item.menu = menu
+        statusItem = item
 
         // Create main window with ContentView
         window = NSWindow(
@@ -104,9 +176,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // Quit the app completely
+    func applicationWillTerminate(_ notification: Notification) {
+        if isPrimaryInstance {
+            if let statusItem {
+                NSStatusBar.system.removeStatusItem(statusItem)
+            }
+            LiveWallpaperSingleInstance.release()
+        }
+    }
+
     @objc func quit() {
-        
         engine?.terminateApplication()
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+            self.statusItem = nil
+        }
+        LiveWallpaperSingleInstance.release()
         NSApp.terminate(nil)
     }
 }
