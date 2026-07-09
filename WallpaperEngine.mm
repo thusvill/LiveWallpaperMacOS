@@ -1000,17 +1000,9 @@ static NSString *folderPath = nil;
   float volume =
       [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
   NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
-  NSString *scaleMode =
-      [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
-
-  if (!scaleMode || scaleMode.length == 0) {
-    scaleMode = @"fill";
-    [[NSUserDefaults standardUserDefaults] setObject:scaleMode
-                                              forKey:@"scale_mode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-  }
-
-  NSLog(@"Scaling mode: %@", scaleMode);
+  NSInteger scaleModeInt = [WallpaperEngine normalizedScaleMode];
+  NSString *scaleMode = [NSString stringWithFormat:@"%ld", (long)scaleModeInt];
+  NSLog(@"Scaling mode: %ld", (long)scaleModeInt);
 
   if (!displayID) {
     NSLog(@"Display ID not valid %u", displayID);
@@ -1244,16 +1236,45 @@ static NSString *folderPath = nil;
           CFSTR("com.live.wallpaper.volumeChanged"), NULL, NULL, true);
     }
 
--(void)updateScaleMode:(NSInteger)mode{
-    
-    [[NSUserDefaults standardUserDefaults] setObject:@(mode)
-                                               forKey:@"scale_mode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+- (void)updateScaleMode:(NSInteger)mode {
+  NSInteger clamped = mode;
+  if (clamped < 0 || clamped > 4)
+    clamped = 0;
+  [[NSUserDefaults standardUserDefaults] setInteger:clamped forKey:@"scale_mode"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+}
+
+
++ (NSInteger)normalizedScaleMode {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  id raw = [defaults objectForKey:@"scale_mode"];
+  if ([raw isKindOfClass:[NSNumber class]]) {
+    NSInteger v = [(NSNumber *)raw integerValue];
+    if (v >= 0 && v <= 4)
+      return v;
+    return 0;
+  }
+  if ([raw isKindOfClass:[NSString class]]) {
+    NSString *s = [(NSString *)raw lowercaseString];
+    NSInteger mapped = 0;
+    if ([s isEqualToString:@"fill"] || [s isEqualToString:@"0"])
+      mapped = 0;
+    else if ([s isEqualToString:@"fit"] || [s isEqualToString:@"1"])
+      mapped = 1;
+    else if ([s isEqualToString:@"stretch"] || [s isEqualToString:@"2"])
+      mapped = 2;
+    else if ([s isEqualToString:@"center"] || [s isEqualToString:@"3"])
+      mapped = 3;
+    else if ([s isEqualToString:@"heightfill"] || [s isEqualToString:@"4"])
+      mapped = 4;
+    [defaults setInteger:mapped forKey:@"scale_mode"];
+    [defaults synchronize];
+    return mapped;
+  }
+  return 0;
 }
 
 
