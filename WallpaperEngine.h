@@ -71,6 +71,7 @@
 - (BOOL)enableAppAsLoginItem;
 
 - (NSString *)getFolderPath;
+- (NSString *)normalizedFilesystemPath:(NSString *)raw;
 - (void)checkFolderPath;
 - (void)scanDisplays;
 - (void)selectFolder:(NSString* )path;
