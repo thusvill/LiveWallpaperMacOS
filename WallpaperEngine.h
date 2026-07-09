@@ -92,6 +92,9 @@
 - (void)startWallpaperRotation;
 - (void)stopWallpaperRotation;
 
+- (void)optimizeVideosInFolder:(NSString *)folderPath
+                withCompletion:(void (^)(NSInteger converted, NSInteger skipped, NSInteger failed))completion;
+
 
 
 

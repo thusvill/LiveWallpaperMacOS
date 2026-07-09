@@ -21,6 +21,7 @@
 #include "SaveSystem.h"
 #include "SharedConstants.h"
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreMedia/CoreMedia.h>
 #import <IOKit/graphics/IOGraphicsLib.h>
 #include <filesystem>
 #import <mach/mach.h>
@@ -1256,6 +1257,143 @@ static NSString *folderPath = nil;
         CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
 }
 
+
+- (void)optimizeVideosInFolder:(NSString *)folderPath
+                withCompletion:
+                    (void (^)(NSInteger converted, NSInteger skipped,
+                              NSInteger failed))completion {
+  if (!folderPath.length) {
+    folderPath = [self getFolderPath];
+  }
+
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSError *listError = nil;
+  NSArray *allFiles =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&listError];
+  if (listError || allFiles.count == 0) {
+    NSLog(@"optimizeVideos: no files in %@", folderPath);
+    if (completion)
+      completion(0, 0, 0);
+    return;
+  }
+
+  NSMutableArray<NSString *> *videoFiles = [NSMutableArray array];
+  for (NSString *file in allFiles) {
+    NSString *ext = file.pathExtension.lowercaseString;
+    if ([ext isEqualToString:@"mp4"] || [ext isEqualToString:@"mov"]) {
+      [videoFiles addObject:file];
+    }
+  }
+
+  dispatch_async(
+      dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSInteger converted = 0;
+        NSInteger skipped = 0;
+        NSInteger failed = 0;
+
+        for (NSString *file in videoFiles) {
+          NSString *fullPath =
+              [folderPath stringByAppendingPathComponent:file];
+          NSURL *fileURL = [NSURL fileURLWithPath:fullPath];
+          AVAsset *asset = [AVAsset assetWithURL:fileURL];
+
+          __block NSArray<AVAssetTrack *> *videoTracks = nil;
+          if (@available(macOS 15.0, *)) {
+            dispatch_semaphore_t trackSem = dispatch_semaphore_create(0);
+            [asset
+                loadTracksWithMediaType:AVMediaTypeVideo
+                      completionHandler:^(
+                          NSArray<AVAssetTrack *> *_Nullable tracks,
+                          NSError *_Nullable error) {
+                        videoTracks = tracks;
+                        dispatch_semaphore_signal(trackSem);
+                      }];
+            dispatch_semaphore_wait(trackSem, DISPATCH_TIME_FOREVER);
+          } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+#pragma clang diagnostic pop
+          }
+
+          BOOL isHEVC = NO;
+          for (AVAssetTrack *track in videoTracks) {
+            NSArray *formatDescriptions = track.formatDescriptions;
+            for (id desc in formatDescriptions) {
+              CMFormatDescriptionRef fmt =
+                  (__bridge CMFormatDescriptionRef)desc;
+              FourCharCode codec = CMFormatDescriptionGetMediaSubType(fmt);
+              if (codec == kCMVideoCodecType_HEVC) {
+                isHEVC = YES;
+                break;
+              }
+            }
+            if (isHEVC)
+              break;
+          }
+
+          if (isHEVC) {
+            skipped++;
+            NSLog(@"optimizeVideos: skipped HEVC %@", file);
+            continue;
+          }
+
+          NSString *tempName = [NSString
+              stringWithFormat:@"%@.tmp.mp4", [[NSUUID UUID] UUIDString]];
+          NSString *tempPath =
+              [NSTemporaryDirectory() stringByAppendingPathComponent:tempName];
+          NSURL *tempURL = [NSURL fileURLWithPath:tempPath];
+
+          AVAssetExportSession *exportSession = [[AVAssetExportSession alloc]
+              initWithAsset:asset
+                 presetName:AVAssetExportPresetHEVCHighestQuality];
+          if (!exportSession) {
+            failed++;
+            NSLog(@"optimizeVideos: no export session for %@", file);
+            continue;
+          }
+          exportSession.outputURL = tempURL;
+          exportSession.outputFileType = AVFileTypeMPEG4;
+          exportSession.shouldOptimizeForNetworkUse = YES;
+
+          __block BOOL fileConverted = NO;
+          dispatch_semaphore_t exportSem = dispatch_semaphore_create(0);
+          [exportSession exportAsynchronouslyWithCompletionHandler:^{
+            NSFileManager *fm = [NSFileManager defaultManager];
+            if (exportSession.status == AVAssetExportSessionStatusCompleted) {
+              NSError *replaceError = nil;
+              if ([fm fileExistsAtPath:fileURL.path]) {
+                [fm removeItemAtURL:fileURL error:&replaceError];
+              }
+              if (![fm moveItemAtURL:tempURL toURL:fileURL error:&replaceError]) {
+                NSLog(@"optimizeVideos: replace failed %@: %@", file,
+                      replaceError.localizedDescription);
+                [fm removeItemAtURL:tempURL error:nil];
+              } else {
+                NSLog(@"optimizeVideos: converted %@", file);
+                fileConverted = YES;
+              }
+            } else {
+              NSLog(@"optimizeVideos: export failed %@: %@", file,
+                    exportSession.error.localizedDescription);
+              [fm removeItemAtURL:tempURL error:nil];
+            }
+            dispatch_semaphore_signal(exportSem);
+          }];
+          dispatch_semaphore_wait(exportSem, DISPATCH_TIME_FOREVER);
+
+          if (fileConverted) {
+            converted++;
+          } else {
+            failed++;
+          }
+        }
+
+        if (completion) {
+          completion(converted, skipped, failed);
+        }
+      });
+}
 
 @end
 
