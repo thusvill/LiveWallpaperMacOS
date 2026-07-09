@@ -74,6 +74,9 @@ static NSString *folderPath = nil;
     usleep(2);
 
     displays = SaveSystem::Load();
+    for (auto &d : displays) {
+      d.daemon = 0; // never trust persisted PIDs
+    }
 
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       
