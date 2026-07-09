@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1B2C3D4E5F6000000000001 /* ImageIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000002 /* ImageIO.framework */; };
 		048ABDDD2F4C1652001393B0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 048ABDDC2F4C1652001393B0 /* AppIcon.icon */; };
 		04E055422EEA794C00F90A44 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055412EEA794C00F90A44 /* AVFoundation.framework */; };
 		04E055442EEA795200F90A44 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055432EEA795200F90A44 /* CoreMedia.framework */; };
@@ -78,6 +79,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1B2C3D4E5F6000000000002 /* ImageIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ImageIO.framework; path = System/Library/Frameworks/ImageIO.framework; sourceTree = SDKROOT; };
 		048ABDDC2F4C1652001393B0 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		04E0070A2EEA738C00F90A44 /* LiveWallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiveWallpaper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		04E055412EEA794C00F90A44 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -299,6 +301,8 @@
 				04E055F32EEA8D6500F90A44 /* IOKit.framework in Frameworks */,
 				04E055F22EEA8D5C00F90A44 /* AVFoundation.framework in Frameworks */,
 				04E055F12EEA8D5700F90A44 /* Cocoa.framework in Frameworks */,
+				04E055442EEA795200F90A44 /* CoreMedia.framework in Frameworks */,
+				A1B2C3D4E5F6000000000001 /* ImageIO.framework in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
