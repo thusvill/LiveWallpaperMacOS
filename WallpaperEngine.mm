@@ -208,20 +208,19 @@ static NSString *folderPath = nil;
 }
 
 - (void)screensDidChange:(NSNotification *)note {
-
   NSLog(@"Screens changed");
-    ScanDisplays();
-    for (Display display : displays) {
-
-      if (!display.videoPath.empty()) {
-        CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-        [self startWallpaperWithPath:_currentVideoPath
-                          onDisplays:@[ @(displayID) ]];
-      }
-    }
-    
-    
+  ScanDisplays();
+  // Restore each display's own video path (not a single global current path).
+  for (Display display : displays) {
+    if (display.videoPath.empty())
+      continue;
+    CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+    if (displayID == kCGNullDirectDisplay)
+      continue;
+    NSString *path =
+        [NSString stringWithUTF8String:display.videoPath.c_str()];
+    [self startWallpaperWithPath:path onDisplays:@[ @(displayID) ]];
+  }
 }
 
 - (NSString *)thumbnailCachePath {
