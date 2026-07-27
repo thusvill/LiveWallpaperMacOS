@@ -30,7 +30,9 @@ Run this: `git clone --single-branch --branch objectiveC https://github.com/thus
 > 
 > This will solve the occupation issue
 > 
-> `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 
+> `xattr -cr /Applications/LiveWallpaper.app`
+>
+> Note: the removal must be **recursive** (`-cr`). A plain `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` only strips the attribute from the bundle root and leaves quarantined files inside the app, so macOS keeps reporting the app as damaged.
 
 Click the "OpenInFinder" button and it'll open a folder, you can place wallpapers in it.
 

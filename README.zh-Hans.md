@@ -31,7 +31,9 @@
 >
 > 这也会解决占用问题：
 >
-> `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app`
+> `xattr -cr /Applications/LiveWallpaper.app`
+>
+> 注意：必须使用**递归**删除（`-cr`）。仅执行 `xattr -d com.apple.quarantine /Applications/LiveWallpaper.app` 只会移除应用包根目录的隔离属性，应用内部仍有被隔离的文件，macOS 会继续提示应用已损坏。
 
 点击 “OpenInFinder” 按钮会打开一个文件夹，你可以把壁纸文件放进去。
 
