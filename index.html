@@ -762,11 +762,53 @@
             margin: 0 auto;
         }
 
+        .contributors-repo-group {
+            margin-top: 70px;
+        }
+
+        .contributors-repo-group:first-of-type {
+            margin-top: 0;
+        }
+
+        .contributors-repo-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+        }
+
+        .contributors-repo-title::before {
+            content: '';
+            width: 4px;
+            height: 22px;
+            border-radius: 2px;
+            background: linear-gradient(180deg, var(--primary), var(--primary-dark));
+            flex-shrink: 0;
+        }
+
+        .contributors-repo-title a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.85rem;
+            transition: color 0.3s ease;
+        }
+
+        .contributors-repo-title a:hover {
+            color: var(--primary);
+        }
+
         .contributors-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
             gap: 20px;
             margin-top: 80px;
+        }
+
+        .contributors-repo-group .contributors-grid {
+            margin-top: 0;
         }
 
         .contributor-card {
@@ -995,6 +1037,8 @@
             h2 { letter-spacing: -0.5px; }
             .feature-card, .install-card, .perf-card, .stat-card { padding: 28px 20px; }
             .contributor-card { padding: 20px 12px; }
+            .contributors-repo-group { margin-top: 48px; }
+            .contributors-repo-title { margin-bottom: 20px; font-size: 1.15rem; }
             .screenshots-slideshow { height: clamp(160px, 52vw, 300px); margin-top: 32px; }
             .slideshow-nav { width: 36px; height: 36px; font-size: 1rem; }
             .slideshow-nav.prev { left: 6px; }
@@ -1251,8 +1295,25 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
             <div class="section-label">COMMUNITY</div>
             <h2>Contributors</h2>
         </div>
-        <div id="contributors-container" class="contributors-grid">
-            <div class="loading">Loading contributors…</div>
+
+        <div class="contributors-repo-group">
+            <div class="contributors-repo-title">
+                LiveWallpaperMacOS
+                <a href="https://github.com/thusvill/LiveWallpaperMacOS" target="_blank" rel="noopener">thusvill/LiveWallpaperMacOS →</a>
+            </div>
+            <div id="contributors-container" class="contributors-grid">
+                <div class="loading">Loading contributors…</div>
+            </div>
+        </div>
+
+        <div class="contributors-repo-group">
+            <div class="contributors-repo-title">
+                homebrew-livewallpaper
+                <a href="https://github.com/thusvill/homebrew-livewallpaper" target="_blank" rel="noopener">thusvill/homebrew-livewallpaper →</a>
+            </div>
+            <div id="contributors-container-brew" class="contributors-grid">
+                <div class="loading">Loading contributors…</div>
+            </div>
         </div>
     </section>
 
@@ -1318,16 +1379,18 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
         ────────────────────────────────────────────── */
 
         const REPO = 'thusvill/LiveWallpaperMacOS';
-        const GH_BASE = `https://api.github.com/repos/${REPO}`;
+        const REPO_BREW = 'thusvill/homebrew-livewallpaper';
+        const GH_API = 'https://api.github.com/repos/';
         const PROXY = 'https://api.allorigins.win/get?url=';
 
         // Simple in-memory cache (survives soft navigations within session)
         const _cache = {};
 
-        async function ghFetch(endpoint) {
-            if (_cache[endpoint]) return _cache[endpoint];
+        async function ghFetch(repo, endpoint) {
+            const cacheKey = `${repo}${endpoint}`;
+            if (_cache[cacheKey]) return _cache[cacheKey];
 
-            const url = `${GH_BASE}${endpoint}`;
+            const url = `${GH_API}${repo}${endpoint}`;
 
             // Attempt 1: direct GitHub API
             try {
@@ -1336,7 +1399,7 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    _cache[endpoint] = data;
+                    _cache[cacheKey] = data;
                     return data;
                 }
                 // Rate-limited or error — fall through to proxy
@@ -1348,7 +1411,7 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
                 if (res.ok) {
                     const wrapper = await res.json();
                     const data = JSON.parse(wrapper.contents);
-                    _cache[endpoint] = data;
+                    _cache[cacheKey] = data;
                     return data;
                 }
             } catch (_) { /* proxy error */ }
@@ -1370,9 +1433,33 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
             requestAnimationFrame(step);
         }
 
+        function renderContributors(container, contributors, repo) {
+            if (Array.isArray(contributors) && contributors.length > 0) {
+                container.innerHTML = '';
+                contributors.forEach(contributor => {
+                    const card = document.createElement('div');
+                    card.className = 'contributor-card';
+                    card.innerHTML = `
+                        <img src="${contributor.avatar_url}&s=160" alt="${contributor.login}" class="contributor-avatar" loading="lazy">
+                        <div class="contributor-name">${contributor.login}</div>
+                        <a href="${contributor.html_url}" target="_blank" rel="noopener" class="contributor-link">
+                            ${contributor.contributions} contribution${contributor.contributions !== 1 ? 's' : ''}
+                        </a>
+                    `;
+                    container.appendChild(card);
+                });
+            } else {
+                container.innerHTML = `
+                    <div class="error-msg">
+                        Could not load contributors.
+                        <a href="https://github.com/${repo}/graphs/contributors" target="_blank" style="color:var(--primary);">View on GitHub →</a>
+                    </div>`;
+            }
+        }
+
         async function fetchGitHubData() {
             // ── Repo stats ──
-            const repo = await ghFetch('');
+            const repo = await ghFetch(REPO, '');
             if (repo) {
                 animateNumber(document.getElementById('stars-count'), repo.stargazers_count);
                 animateNumber(document.getElementById('forks-count'), repo.forks_count);
@@ -1386,7 +1473,7 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
 
             // ── Releases ──
             const releasesContainer = document.getElementById('releases-container');
-            const releases = await ghFetch('/releases');
+            const releases = await ghFetch(REPO, '/releases');
 
             if (Array.isArray(releases) && releases.length > 0) {
                 releasesContainer.innerHTML = '';
@@ -1455,31 +1542,15 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
                     </div>`;
             }
 
-            // ── Contributors ──
+            // ── Contributors (LiveWallpaperMacOS) ──
             const contributorsContainer = document.getElementById('contributors-container');
-            const contributors = await ghFetch('/contributors?per_page=12');
+            const contributors = await ghFetch(REPO, '/contributors?per_page=12');
+            renderContributors(contributorsContainer, contributors, REPO);
 
-            if (Array.isArray(contributors) && contributors.length > 0) {
-                contributorsContainer.innerHTML = '';
-                contributors.forEach(contributor => {
-                    const card = document.createElement('div');
-                    card.className = 'contributor-card';
-                    card.innerHTML = `
-                        <img src="${contributor.avatar_url}&s=160" alt="${contributor.login}" class="contributor-avatar" loading="lazy">
-                        <div class="contributor-name">${contributor.login}</div>
-                        <a href="${contributor.html_url}" target="_blank" rel="noopener" class="contributor-link">
-                            ${contributor.contributions} contribution${contributor.contributions !== 1 ? 's' : ''}
-                        </a>
-                    `;
-                    contributorsContainer.appendChild(card);
-                });
-            } else {
-                contributorsContainer.innerHTML = `
-                    <div class="error-msg">
-                        Could not load contributors.
-                        <a href="https://github.com/${REPO}/graphs/contributors" target="_blank" style="color:var(--primary);">View on GitHub →</a>
-                    </div>`;
-            }
+            // ── Contributors (homebrew-livewallpaper) ──
+            const contributorsBrewContainer = document.getElementById('contributors-container-brew');
+            const contributorsBrew = await ghFetch(REPO_BREW, '/contributors?per_page=12');
+            renderContributors(contributorsBrewContainer, contributorsBrew, REPO_BREW);
         }
 
         fetchGitHubData();
