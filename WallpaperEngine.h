@@ -92,6 +92,7 @@
 -(void) startPlaylist;
 - (void)startWallpaperRotation;
 - (void)stopWallpaperRotation;
+- (void)restoreSessionAfterLaunch;
 
 
 
@@ -100,7 +101,7 @@
 @property(nonatomic, assign) BOOL generatingThumbImages;
 @property(nonatomic, strong) NSString *currentVideoPath;
 @property(nonatomic, assign) std::list<pid_t> daemonPIDs;
-/// Must be strong — assign freed the array immediately and -count crashed on garbage.
+/// Must be strong — assign freed the array and -count crashed on garbage.
 @property(nonatomic, strong) NSMutableArray<NSString *> *wallpaperList;
 @property(assign) int currentWallpaper;
 @property (nonatomic, strong) NSTimer *wallpaperTimer;
