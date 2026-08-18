@@ -21,6 +21,9 @@
 #include "SaveSystem.h"
 #include "SharedConstants.h"
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreMedia/CoreMedia.h>
+#import <ImageIO/ImageIO.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <IOKit/graphics/IOGraphicsLib.h>
 #include <filesystem>
 #import <mach/mach.h>
@@ -468,6 +471,66 @@ static NSString *folderPath = nil;
   }
 }
 
+- (BOOL)generateStaticImageForVideoPath:(NSString *)videoPath
+                             outputPath:(NSString *)outputPath {
+  if (!videoPath.length || !outputPath.length)
+    return NO;
+  if (![[NSFileManager defaultManager] fileExistsAtPath:videoPath])
+    return NO;
+
+  NSString *dir = [outputPath stringByDeletingLastPathComponent];
+  if (dir.length) {
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+  }
+
+  NSURL *url = [NSURL fileURLWithPath:videoPath isDirectory:NO];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url
+                                          options:@{
+                                            AVURLAssetPreferPreciseDurationAndTimingKey : @NO
+                                          }];
+  AVAssetImageGenerator *generator =
+      [[AVAssetImageGenerator alloc] initWithAsset:asset];
+  generator.appliesPreferredTrackTransform = YES;
+  // Cap: enough for desktop fallback under icons, not full 6K aerial master.
+  NSScreen *screen = [NSScreen mainScreen];
+  CGFloat scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 2.0;
+  CGFloat maxW = MIN(screen.frame.size.width * scale, 2560.0);
+  CGFloat maxH = MIN(screen.frame.size.height * scale, 1600.0);
+  generator.maximumSize = CGSizeMake(maxW, maxH);
+  generator.requestedTimeToleranceBefore = CMTimeMake(1, 2);
+  generator.requestedTimeToleranceAfter = CMTimeMake(1, 2);
+
+  NSError *err = nil;
+  CMTime t = CMTimeMakeWithSeconds(1.0, 600);
+  CGImageRef image = [generator copyCGImageAtTime:t actualTime:NULL error:&err];
+  if (!image) {
+    image = [generator copyCGImageAtTime:kCMTimeZero actualTime:NULL error:&err];
+  }
+  if (!image) {
+    NSLog(@"generateStaticImageForVideoPath failed: %@ — %@", videoPath,
+          err.localizedDescription);
+    return NO;
+  }
+
+  CFURLRef cfURL = (__bridge CFURLRef)[NSURL fileURLWithPath:outputPath];
+  CGImageDestinationRef dest = CGImageDestinationCreateWithURL(
+      cfURL, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
+  BOOL ok = NO;
+  if (dest) {
+    CGImageDestinationAddImage(dest, image, NULL);
+    ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+  }
+  CGImageRelease(image);
+  if (ok) {
+    NSLog(@"Static frame saved: %@", outputPath);
+  }
+  return ok;
+}
+
 - (void)generateStaticImageFromAsset:(AVAsset *)asset
                             filename:(NSString *)filename
                        wallpaperPath:(NSString *)wallpaperPath {
@@ -534,7 +597,8 @@ static NSString *folderPath = nil;
 - (void)generateThumbnailsForFolder:(NSString *)folderPath
                      withCompletion:(void (^)(void))completion {
 
-  // Use atomic operation to prevent race condition
+  folderPath = [self normalizedFilesystemPath:folderPath ?: [self getFolderPath]];
+
   @synchronized(self) {
     if (_generatingThumbImages) {
       NSLog(@"Thumbnail generation already in progress, skipping...");
@@ -546,9 +610,18 @@ static NSString *folderPath = nil;
   }
 
   NSString *thumbnailCachePath = [self thumbnailCachePath];
-  NSLog(@"Generating Thumbnails in %@ ...", thumbnailCachePath);
+  NSLog(@"Generating Thumbnails\n  folder: %@\n  cache:  %@", folderPath,
+        thumbnailCachePath);
 
   NSFileManager *fileManager = [NSFileManager defaultManager];
+  BOOL isDir = NO;
+  if (![fileManager fileExistsAtPath:folderPath isDirectory:&isDir] || !isDir) {
+    NSLog(@"Thumbnail folder missing or not a directory: %@", folderPath);
+    _generatingThumbImages = NO;
+    if (completion)
+      completion();
+    return;
+  }
 
   if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
     [fileManager createDirectoryAtPath:thumbnailCachePath
@@ -557,8 +630,12 @@ static NSString *folderPath = nil;
                                  error:nil];
   }
 
-  NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
-                                                                error:nil];
+  NSError *listErr = nil;
+  NSArray<NSString *> *files =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&listErr];
+  if (listErr) {
+    NSLog(@"contentsOfDirectory error: %@", listErr.localizedDescription);
+  }
   if (files.count == 0) {
     NSLog(@"No files found in folder: %@", folderPath);
     _generatingThumbImages = NO;
@@ -567,84 +644,140 @@ static NSString *folderPath = nil;
     return;
   }
 
-  // Filter video files and check which need thumbnails
   NSMutableArray<NSString *> *filesToProcess = [NSMutableArray array];
   for (NSString *filename in files) {
-    if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
-        ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+    NSString *ext = filename.pathExtension.lowercaseString;
+    if (![ext isEqualToString:@"mp4"] && ![ext isEqualToString:@"mov"] &&
+        ![ext isEqualToString:@"m4v"]) {
       continue;
     }
-
-    // Check if thumbnail already exists
     NSString *thumbName = [[filename stringByDeletingPathExtension]
         stringByAppendingPathExtension:@"png"];
     NSString *thumbPath =
         [thumbnailCachePath stringByAppendingPathComponent:thumbName];
-
-    BOOL isDir;
-    NSLog(@"THUMB CHECK:\n  filename: %@\n  thumbPath: %@\n  exists: %d isDir: "
-          @"%d",
-          filename, thumbPath,
-          [fileManager fileExistsAtPath:thumbPath isDirectory:&isDir], isDir);
-
     if (![fileManager fileExistsAtPath:thumbPath]) {
       [filesToProcess addObject:filename];
     }
   }
 
   if (filesToProcess.count == 0) {
-    NSLog(@"All thumbnails already exist");
+    NSLog(@"All thumbnails already exist (%lu videos scanned)",
+          (unsigned long)files.count);
     _generatingThumbImages = NO;
     if (completion)
       completion();
     return;
   }
 
-  NSLog(@"Processing %lu videos for thumbnails",
+  NSLog(@"Processing %lu videos for thumbnails (sync grab, concurrent=2)",
         (unsigned long)filesToProcess.count);
 
-  // Use block-scoped variable for counting
-  __block NSInteger completedCount = 0;
-  NSInteger totalCount = filesToProcess.count;
+  // Concurrent but bounded — sync frame grab is reliable for multi-GB aerials.
+  dispatch_queue_t work = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+  dispatch_group_t group = dispatch_group_create();
+  dispatch_semaphore_t slots = dispatch_semaphore_create(2);
+  NSString *folderCopy = [folderPath copy];
+  NSString *cacheCopy = [thumbnailCachePath copy];
 
   for (NSString *filename in filesToProcess) {
-    dispatch_async(_thumbnailQueue, ^{
+    dispatch_group_async(group, work, ^{
+      dispatch_semaphore_wait(slots, DISPATCH_TIME_FOREVER);
       @autoreleasepool {
-        NSString *filePath =
-            [folderPath stringByAppendingPathComponent:filename];
-        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
-
-        if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
-          NSLog(@"Video not found: %@", filePath);
-
-          @synchronized(self) {
-            completedCount++;
-            if (completedCount >= totalCount) {
-              self->_generatingThumbImages = NO;
-              if (completion) {
-                dispatch_async(dispatch_get_main_queue(), completion);
-              }
-            }
-          }
-          return;
-        }
-
-        AVAsset *asset = [AVAsset assetWithURL:videoURL];
-
-        [asset loadValuesAsynchronouslyForKeys:@[ @"tracks", @"duration" ]
-                             completionHandler:^{
-                               [self processThumbnailForAsset:asset
-                                                     filename:filename
-                                                     videoURL:videoURL
-                                               completedCount:&completedCount
-                                                   totalCount:totalCount
-                                                thumbnailPath:thumbnailCachePath
-                                                   completion:completion];
-                             }];
+        [self writeThumbnailSynchronouslyForFilename:filename
+                                          folderPath:folderCopy
+                                       thumbnailRoot:cacheCopy];
       }
+      dispatch_semaphore_signal(slots);
     });
   }
+
+  dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+    self->_generatingThumbImages = NO;
+    NSLog(@"Thumbnail generation finished");
+    if (completion)
+      completion();
+  });
 }
+
+/// Reliable thumbnail for huge HEVC aerials: small max size, t≈1s, sync grab.
+- (BOOL)writeThumbnailSynchronouslyForFilename:(NSString *)filename
+                                    folderPath:(NSString *)folderPath
+                                 thumbnailRoot:(NSString *)thumbnailRoot {
+  NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
+    NSLog(@"Thumb skip (missing): %@", filePath);
+    return NO;
+  }
+
+  NSString *thumbName = [[filename stringByDeletingPathExtension]
+      stringByAppendingPathExtension:@"png"];
+  NSString *thumbPath =
+      [thumbnailRoot stringByAppendingPathComponent:thumbName];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:thumbPath])
+    return YES;
+
+  NSURL *videoURL = [NSURL fileURLWithPath:filePath isDirectory:NO];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL
+                                          options:@{
+                                            AVURLAssetPreferPreciseDurationAndTimingKey : @NO
+                                          }];
+
+  AVAssetImageGenerator *generator =
+      [[AVAssetImageGenerator alloc] initWithAsset:asset];
+  generator.appliesPreferredTrackTransform = YES;
+  // Small decode target — UI card is ~300×168; 2× is plenty.
+  generator.maximumSize = CGSizeMake(THUMBNAIL_WIDTH * 2.0, THUMBNAIL_HEIGHT * 2.0);
+  // Wide tolerance: don't seek precisely on multi-GB masters.
+  generator.requestedTimeToleranceBefore = CMTimeMake(2, 1);
+  generator.requestedTimeToleranceAfter = CMTimeMake(2, 1);
+
+  // Prefer t=1s (fast open path); fall back to zero then mid.
+  NSError *err = nil;
+  CMTime times[3] = {
+      CMTimeMakeWithSeconds(1.0, 600),
+      kCMTimeZero,
+      CMTimeMakeWithSeconds(3.0, 600),
+  };
+  CGImageRef image = NULL;
+  for (int i = 0; i < 3; i++) {
+    err = nil;
+    image = [generator copyCGImageAtTime:times[i] actualTime:NULL error:&err];
+    if (image)
+      break;
+  }
+
+  if (!image) {
+    NSLog(@"Thumb FAIL %@: %@", filename, err.localizedDescription);
+    return NO;
+  }
+
+  CFURLRef cfURL = (__bridge CFURLRef)[NSURL fileURLWithPath:thumbPath];
+  CGImageDestinationRef dest = CGImageDestinationCreateWithURL(
+      cfURL, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
+  BOOL wrote = NO;
+  if (dest) {
+    // JPEG-like quality via PNG is fine; keep small.
+    CGImageDestinationAddImage(dest, image, NULL);
+    wrote = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+  }
+  CGImageRelease(image);
+
+  if (wrote) {
+    NSLog(@"Thumb OK %@", filename);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:@"ThumbnailSaved"
+                        object:nil
+                      userInfo:@{@"path" : thumbPath}];
+    });
+  } else {
+    NSLog(@"Thumb write failed %@", thumbPath);
+  }
+  return wrote;
+}
+
+// Kept for any legacy callers; routes into the sync writer.
 - (void)processThumbnailForAsset:(AVAsset *)asset
                         filename:(NSString *)filename
                         videoURL:(NSURL *)videoURL
@@ -652,109 +785,20 @@ static NSString *folderPath = nil;
                       totalCount:(NSInteger)totalCount
                    thumbnailPath:(NSString *)thumbnailPath
                       completion:(void (^)(void))completion {
-
-  NSError *error = nil;
-
-  AVKeyValueStatus trackStatus = [asset statusOfValueForKey:@"tracks"
-                                                      error:&error];
-  AVKeyValueStatus durationStatus = [asset statusOfValueForKey:@"duration"
-                                                         error:&error];
-
-  if (trackStatus != AVKeyValueStatusLoaded ||
-      durationStatus != AVKeyValueStatusLoaded) {
-    NSLog(@"Failed to load asset metadata for %@: %@", filename,
-          error.localizedDescription);
-
+  NSString *folder = [videoURL.path stringByDeletingLastPathComponent];
+  [self writeThumbnailSynchronouslyForFilename:filename
+                                    folderPath:folder
+                                 thumbnailRoot:thumbnailPath];
+  if (completedCount) {
     @synchronized(self) {
       (*completedCount)++;
       if (*completedCount >= totalCount) {
         self->_generatingThumbImages = NO;
-        if (completion) {
+        if (completion)
           dispatch_async(dispatch_get_main_queue(), completion);
-        }
       }
     }
-    return;
   }
-
-  AVAssetImageGenerator *generator =
-      [[AVAssetImageGenerator alloc] initWithAsset:asset];
-  generator.appliesPreferredTrackTransform = YES;
-
-  NSArray<AVAssetTrack *> *videoTracks =
-      [asset tracksWithMediaType:AVMediaTypeVideo];
-  if (videoTracks.count == 0) {
-    NSLog(@"No video track for %@", filename);
-
-    @synchronized(self) {
-      (*completedCount)++;
-      if (*completedCount >= totalCount) {
-        self->_generatingThumbImages = NO;
-        if (completion) {
-          dispatch_async(dispatch_get_main_queue(), completion);
-        }
-      }
-    }
-    return;
-  }
-
-  // Configure thumbnail size
-  NSScreen *screen = [NSScreen mainScreen];
-  CGFloat scale = screen ? screen.backingScaleFactor : 2.0;
-  generator.maximumSize = CGSizeMake(THUMBNAIL_WIDTH * scale, THUMBNAIL_HEIGHT * scale);
-
-  Float64 midpoint = CMTimeGetSeconds(asset.duration) / 2.0;
-  CMTime targetTime = CMTimeMakeWithSeconds(midpoint, asset.duration.timescale);
-
-  NSString *thumbName = [[filename stringByDeletingPathExtension]
-      stringByAppendingPathExtension:@"png"];
-  NSString *thumbPath =
-      [thumbnailPath stringByAppendingPathComponent:thumbName];
-  NSURL *thumbURL = [NSURL fileURLWithPath:thumbPath];
-
-  [generator
-      generateCGImagesAsynchronouslyForTimes:@[ [NSValue
-                                                 valueWithCMTime:targetTime] ]
-                           completionHandler:^(
-                               CMTime requestedTime, CGImageRef cgImage,
-                               CMTime actualTime,
-                               AVAssetImageGeneratorResult result,
-                               NSError *imgError) {
-                             if (result == AVAssetImageGeneratorSucceeded &&
-                                 cgImage != NULL) {
-                               CGImageRef copy = CGImageCreateCopy(cgImage);
-
-                               CGImageDestinationRef dest =
-                                   CGImageDestinationCreateWithURL(
-                                       (__bridge CFURLRef)thumbURL,
-                                       (__bridge CFStringRef)
-                                           UTTypePNG.identifier,
-                                       1, NULL);
-
-                               if (dest) {
-                                 CGImageDestinationAddImage(dest, copy, NULL);
-                                 CGImageDestinationFinalize(dest);
-                                 CFRelease(dest);
-                               }
-
-                               CGImageRelease(copy);
-
-                             } else {
-                               NSLog(@"Thumbnail generation failed for %@: %@",
-                                     filename, imgError.localizedDescription);
-                             }
-
-                             @synchronized(self) {
-                               (*completedCount)++;
-                               if (*completedCount >= totalCount) {
-                                 self->_generatingThumbImages = NO;
-                                 if (completion) {
-                                   dispatch_async(dispatch_get_main_queue(),
-                                                  completion);
-                                 }
-                               }
-                             }
-                           }];
 }
 
 - (void)saveThumbnailImage:(CGImageRef)image
@@ -981,10 +1025,10 @@ static NSString *folderPath = nil;
       stringByAppendingPathComponent:imageFilename];
 
   NSFileManager *fm = [NSFileManager defaultManager];
-  if (![fm fileExistsAtPath:imagePath] && !_generatingImages) {
-    NSLog(@"Static wallpaper not found, generating for: %@", videoPath);
-    [self generateStaticWallpapersForFolder:[self getFolderPath]
-                             withCompletion:nil];
+  if (![fm fileExistsAtPath:imagePath]) {
+    NSLog(@"Static wallpaper missing — generating single frame for: %@",
+          videoPath.lastPathComponent);
+    [self generateStaticImageForVideoPath:videoPath outputPath:imagePath];
   }
   NSMutableArray<NSNumber *> *screensToUse = [displayIDs mutableCopy];
   if (screensToUse.count == 0) {
