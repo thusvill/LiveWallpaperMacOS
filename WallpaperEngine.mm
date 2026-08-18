@@ -61,72 +61,94 @@ static NSString *folderPath = nil;
     _generatingThumbImages = NO;
     _currentVideoPath = nil;
     _daemonPIDs = std::list<pid_t>();
+    _currentWallpaper = 0;
+    _wallpaperList = [NSMutableArray array];
+    _isrotationrunning = NO;
 
     _wallpaperQueue = dispatch_queue_create("com.livewallpaper.wallpaperQueue",
                                             DISPATCH_QUEUE_CONCURRENT);
     _thumbnailQueue = dispatch_queue_create("com.livewallpaper.thumbnailQueue",
                                             DISPATCH_QUEUE_SERIAL);
-
     _wallpaperSemaphore = dispatch_semaphore_create(2);
-      _currentWallpaper = 0;
-      _wallpaperList = [NSMutableArray array];
-      
-    ScanDisplays();
 
-    [self killAllDaemons];
-    usleep(2);
+    @try {
+      ScanDisplays();
+      [self killAllDaemons];
 
-    displays = SaveSystem::Load();
+      displays = SaveSystem::Load();
+      for (auto &d : displays) {
+        d.daemon = 0;
+      }
 
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-      
+      NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       _rotationType = (RotationType)[defaults integerForKey:@"rtype"];
-      
       _rotationDelay = (int)[defaults integerForKey:@"rdelay"];
-      
-      if(_rotationType == 0){
-          _rotationType = RotationTypeSequential;
-      }
-      if(_rotationDelay < 50){
-          _rotationDelay = 60;
-      }
-      if([defaults boolForKey:@"rotation"]){
-          [self startWallpaperRotation];
-      }
-      
+      if (_rotationType == 0)
+        _rotationType = RotationTypeSequential;
+      if (_rotationDelay < 50)
+        _rotationDelay = 60;
 
-    for (Display display : displays) {
-      CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-      if ([defaults boolForKey:@"random"]) {
-        [self randomWallpapersLid];
-      } else {
-        if (!display.videoPath.empty()) {
-
-          [self
-              startWallpaperWithPath:[NSString
-                                         stringWithUTF8String:display.videoPath
-                                                                  .c_str()]
-                          onDisplays:@[ @(displayID) ]];
-        }
-      }
+      // Defer restore so NSApp finishes launching (avoids init-time crashes
+      // and spawn races with the UI).
+      __weak typeof(self) weakSelf = self;
+      dispatch_after(
+          dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+          dispatch_get_main_queue(), ^{
+            [weakSelf restoreSessionAfterLaunch];
+          });
+    } @catch (NSException *ex) {
+      NSLog(@"WallpaperEngine init exception: %@ — %@", ex.name, ex.reason);
     }
   }
   return self;
 }
 
-- (void)randomWallpapersLid {
+- (void)restoreSessionAfterLaunch {
+  @try {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL randomStartup = [defaults boolForKey:@"random"];
 
-  NSLog(@"Applying Random Wallpapers!");
-
-  for (Display display : displays) {
-
-    if (!display.videoPath.empty()) {
-      CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-      [self startWallpaperWithPath:
-                [self getRandomVideoFileFromFolder:[self getFolderPath]]
-                        onDisplays:@[ @(displayID) ]];
+    if (randomStartup) {
+      [self randomWallpapersLid];
+    } else {
+      for (const Display &display : displays) {
+        if (display.videoPath.empty())
+          continue;
+        NSString *path =
+            [NSString stringWithUTF8String:display.videoPath.c_str()];
+        if (!path.length ||
+            ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+          NSLog(@"Skip missing saved wallpaper: %@", path);
+          continue;
+        }
+        CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+        if (displayID == kCGNullDirectDisplay)
+          continue;
+        [self startWallpaperWithPath:path onDisplays:@[ @(displayID) ]];
+      }
     }
+
+    if ([defaults boolForKey:@"rotation"]) {
+      [self startWallpaperRotation];
+    }
+  } @catch (NSException *ex) {
+    NSLog(@"restoreSessionAfterLaunch: %@ — %@", ex.name, ex.reason);
+  }
+}
+
+- (void)randomWallpapersLid {
+  NSLog(@"Applying Random Wallpapers!");
+  NSString *folder = [self getFolderPath];
+  for (const Display &display : displays) {
+    CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+    if (displayID == kCGNullDirectDisplay)
+      continue;
+    NSString *pick = [self getRandomVideoFileFromFolder:folder];
+    if (!pick.length) {
+      NSLog(@"randomWallpapersLid: no videos in %@", folder);
+      return;
+    }
+    [self startWallpaperWithPath:pick onDisplays:@[ @(displayID) ]];
   }
 }
 
@@ -1044,17 +1066,9 @@ static NSString *folderPath = nil;
   float volume =
       [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
   NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
-  NSString *scaleMode =
-      [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
-
-  if (!scaleMode || scaleMode.length == 0) {
-    scaleMode = @"fill";
-    [[NSUserDefaults standardUserDefaults] setObject:scaleMode
-                                              forKey:@"scale_mode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-  }
-
-  NSLog(@"Scaling mode: %@", scaleMode);
+  NSInteger scaleModeInt = [WallpaperEngine normalizedScaleMode];
+  NSString *scaleMode = [NSString stringWithFormat:@"%ld", (long)scaleModeInt];
+  NSLog(@"Scaling mode: %ld", (long)scaleModeInt);
 
   if (!displayID) {
     NSLog(@"Display ID not valid %u", displayID);
@@ -1112,10 +1126,43 @@ static NSString *folderPath = nil;
       CFSTR("com.live.wallpaper.terminate"), NULL, NULL, true);
 }
 
+/// Normalize user/folder paths: expand ~, strip file://, decode %20, drop trailing slash.
+- (NSString *)normalizedFilesystemPath:(NSString *)raw {
+  if (!raw.length)
+    return raw;
+
+  NSString *path = [raw
+      stringByTrimmingCharactersInSet:[NSCharacterSet
+                                          whitespaceAndNewlineCharacterSet]];
+
+  if ([path hasPrefix:@"file:"]) {
+    NSURL *url = [NSURL URLWithString:path];
+    if (url.path.length)
+      path = url.path;
+  }
+  NSString *decoded = [path stringByRemovingPercentEncoding];
+  if (decoded.length)
+    path = decoded;
+
+  path = [path stringByExpandingTildeInPath];
+
+  while (path.length > 1 && [path hasSuffix:@"/"]) {
+    path = [path substringToIndex:path.length - 1];
+  }
+  return path;
+}
+
 - (void)checkFolderPath {
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   if ([defaults objectForKey:@"WallpaperFolder"]) {
-    folderPath = [defaults stringForKey:@"WallpaperFolder"];
+    folderPath =
+        [self normalizedFilesystemPath:[defaults stringForKey:@"WallpaperFolder"]];
+    if (folderPath.length &&
+        ![folderPath isEqualToString:[defaults stringForKey:@"WallpaperFolder"]]) {
+      [defaults setObject:folderPath forKey:@"WallpaperFolder"];
+      [defaults synchronize];
+      NSLog(@"Healed WallpaperFolder pref → %@", folderPath);
+    }
   } else if (!folderPath) {
     folderPath = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
     [defaults setObject:folderPath forKey:@"WallpaperFolder"];
@@ -1128,7 +1175,6 @@ static NSString *folderPath = nil;
   NSString *path = [defaults stringForKey:@"WallpaperFolder"];
 
   if (!path) {
-
     NSString *cacheDir =
         [[[NSFileManager defaultManager]
              URLsForDirectory:NSCachesDirectory
@@ -1140,92 +1186,102 @@ static NSString *folderPath = nil;
     [defaults synchronize];
   }
 
+  path = [self normalizedFilesystemPath:path];
+  if (path.length &&
+      ![path isEqualToString:[defaults stringForKey:@"WallpaperFolder"]]) {
+    [defaults setObject:path forKey:@"WallpaperFolder"];
+    [defaults synchronize];
+  }
+  folderPath = path;
   return path;
 }
 
-- (void)checkWallpapers{
-    if(_wallpaperList.count > 0){
-        [_wallpaperList removeAllObjects];
+- (void)checkWallpapers {
+  if (!_wallpaperList) {
+    _wallpaperList = [NSMutableArray array];
+  } else {
+    [_wallpaperList removeAllObjects];
+  }
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSError *error = nil;
+  folderPath = [self getFolderPath];
+  NSArray<NSString *> *allFiles =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
+  if (error || !allFiles) {
+    NSLog(@"Error reading directory: %@", error.localizedDescription);
+    return;
+  }
+  for (NSString *fileName in allFiles) {
+    NSString *ext = [[fileName pathExtension] lowercaseString];
+    if ([ext isEqualToString:@"mp4"] || [ext isEqualToString:@"mov"] ||
+        [ext isEqualToString:@"m4v"]) {
+      [_wallpaperList addObject:[folderPath stringByAppendingPathComponent:fileName]];
     }
-    
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSError *error = nil;
-    folderPath = [self getFolderPath];
-    NSArray<NSString *> *allFiles =
-        [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
-
-    if (error) {
-      NSLog(@"Error reading directory: %@", error.localizedDescription);
-        NSLog(@"Wallaper List returns Empty");
-        return;
-      
-    }
-    
-    for (NSString *fileName in allFiles) {
-      NSString *fileExtension = [[fileName pathExtension] lowercaseString];
-
-      if ([fileExtension isEqualToString:@"mp4"] ||
-          [fileExtension isEqualToString:@"mov"]) {
-        NSString *fullPath = [folderPath stringByAppendingPathComponent:fileName];
-        [_wallpaperList addObject:fullPath];
-          NSLog(@"detected %@", fullPath);
-      }
-    }
-
-    if (_wallpaperList.count == 0) {
-        NSLog(@"Folder is empty, return zero for playlist");
-        return;
-    }
-    
+  }
+  NSLog(@"Playlist has %lu videos", (unsigned long)_wallpaperList.count);
 }
 
--(void) nextWallpaper{
-    
-    if(_rotationType == 1){
-        if (_wallpaperList == nil || _wallpaperList.count == 0) {
-                NSLog(@"⚠️ Cannot rotate: wallpaperList is empty.");
-                [self stopWallpaperRotation];
-                return;
-            }
-        
-        _currentWallpaper = (_currentWallpaper + 1) % _wallpaperList.count;
-        for (Display display : displays) {
-
-          if (!display.videoPath.empty()) {
-            CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-            [self startWallpaperWithPath:
-             _wallpaperList[_currentWallpaper]
-                              onDisplays:@[ @(displayID) ]];
-          }
-        }
-        
-    }else if(_rotationType == 2){
-        [self randomWallpapersLid];
+- (void)nextWallpaper {
+  @try {
+    if (!_wallpaperList || _wallpaperList.count == 0)
+      [self checkWallpapers];
+    if (!_wallpaperList || _wallpaperList.count == 0) {
+      NSLog(@"Cannot rotate: empty playlist");
+      [self stopWallpaperRotation];
+      return;
     }
+    if (_rotationType == RotationTypeRandom) {
+      [self randomWallpapersLid];
+      return;
+    }
+    NSUInteger count = _wallpaperList.count;
+    _currentWallpaper = (_currentWallpaper + 1) % (int)count;
+    if (_currentWallpaper < 0 || _currentWallpaper >= (int)count)
+      _currentWallpaper = 0;
+    NSString *path = _wallpaperList[(NSUInteger)_currentWallpaper];
+    if (!path.length || ![[NSFileManager defaultManager] fileExistsAtPath:path])
+      return;
+    NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
+    for (const Display &display : displays) {
+      CGDirectDisplayID did = DisplayIDFromUUID(display.uuid);
+      if (did != kCGNullDirectDisplay)
+        [ids addObject:@(did)];
+    }
+    if (ids.count == 0) {
+      NSNumber *mainID = [[NSScreen mainScreen] deviceDescription][@"NSScreenNumber"];
+      if (mainID) [ids addObject:mainID];
+    }
+    [self startWallpaperWithPath:path onDisplays:ids];
+  } @catch (NSException *ex) {
+    NSLog(@"nextWallpaper: %@ — %@", ex.name, ex.reason);
+  }
 }
 - (void)stopWallpaperRotation {
-    [self.wallpaperTimer invalidate];
-    self.wallpaperTimer = nil;
-    NSLog(@"Wallpaper rotation stoped.");
+  [self.wallpaperTimer invalidate];
+  self.wallpaperTimer = nil;
+  _isrotationrunning = NO;
+  NSLog(@"Wallpaper rotation stopped.");
 }
-- (void)startWallpaperRotation{
-    int delay = _rotationDelay;
-    [self stopWallpaperRotation];
-    [self checkWallpapers];
-    
-    if (_currentWallpaper >= _wallpaperList.count) {
-            _currentWallpaper = 0;
-        }
-
-    self.wallpaperTimer = [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
-                                                           target:self
-                                                         selector:@selector(nextWallpaper)
-                                                         userInfo:nil
-                                                          repeats:YES];
-    
-    [self.wallpaperTimer fire];
-    NSLog(@"Wallpaper rotation started with %d delay.", delay);
+- (void)startWallpaperRotation {
+  int delay = _rotationDelay > 0 ? _rotationDelay : 60;
+  [self stopWallpaperRotation];
+  [self checkWallpapers];
+  if (!_wallpaperList || _wallpaperList.count == 0) {
+    NSLog(@"Wallpaper rotation not started — empty playlist");
+    return;
+  }
+  if (_currentWallpaper < 0 || _currentWallpaper >= (int)_wallpaperList.count)
+    _currentWallpaper = 0;
+  self.wallpaperTimer =
+      [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
+                                       target:self
+                                     selector:@selector(nextWallpaper)
+                                     userInfo:nil
+                                      repeats:YES];
+  [[NSRunLoop mainRunLoop] addTimer:self.wallpaperTimer forMode:NSRunLoopCommonModes];
+  _isrotationrunning = YES;
+  NSLog(@"Wallpaper rotation started: delay=%ds items=%lu", delay,
+        (unsigned long)_wallpaperList.count);
 }
 
 - (void)scanDisplays {
@@ -1250,8 +1306,12 @@ static NSString *folderPath = nil;
 }
 
 - (void)selectFolder:(NSString *)path {
+  NSString *normalized = [self normalizedFilesystemPath:path];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-  [defaults setObject:path forKey:@"WallpaperFolder"];
+  [defaults setObject:normalized forKey:@"WallpaperFolder"];
+  [defaults synchronize];
+  folderPath = normalized;
+  NSLog(@"Wallpaper folder set to: %@", normalized);
 }
 
 - (void)terminateApplication {
@@ -1288,16 +1348,45 @@ static NSString *folderPath = nil;
           CFSTR("com.live.wallpaper.volumeChanged"), NULL, NULL, true);
     }
 
--(void)updateScaleMode:(NSInteger)mode{
-    
-    [[NSUserDefaults standardUserDefaults] setObject:@(mode)
-                                               forKey:@"scale_mode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+- (void)updateScaleMode:(NSInteger)mode {
+  NSInteger clamped = mode;
+  if (clamped < 0 || clamped > 4)
+    clamped = 0;
+  [[NSUserDefaults standardUserDefaults] setInteger:clamped forKey:@"scale_mode"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+}
+
+
++ (NSInteger)normalizedScaleMode {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  id raw = [defaults objectForKey:@"scale_mode"];
+  if ([raw isKindOfClass:[NSNumber class]]) {
+    NSInteger v = [(NSNumber *)raw integerValue];
+    if (v >= 0 && v <= 4)
+      return v;
+    return 0;
+  }
+  if ([raw isKindOfClass:[NSString class]]) {
+    NSString *s = [(NSString *)raw lowercaseString];
+    NSInteger mapped = 0;
+    if ([s isEqualToString:@"fill"] || [s isEqualToString:@"0"])
+      mapped = 0;
+    else if ([s isEqualToString:@"fit"] || [s isEqualToString:@"1"])
+      mapped = 1;
+    else if ([s isEqualToString:@"stretch"] || [s isEqualToString:@"2"])
+      mapped = 2;
+    else if ([s isEqualToString:@"center"] || [s isEqualToString:@"3"])
+      mapped = 3;
+    else if ([s isEqualToString:@"heightfill"] || [s isEqualToString:@"4"])
+      mapped = 4;
+    [defaults setInteger:mapped forKey:@"scale_mode"];
+    [defaults synchronize];
+    return mapped;
+  }
+  return 0;
 }
 
 

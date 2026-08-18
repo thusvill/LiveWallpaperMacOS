@@ -76,7 +76,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.contentView = NSHostingView(rootView: ContentView())
         window.title = "LiveWallpaper"
         window.isReleasedWhenClosed = false
-        window.makeKeyAndOrderFront(nil)
+        // Menu-bar agent: do not force the config window on every launch
+        // (LaunchAgents / login items would keep reopening it).
+        window.orderOut(nil)
         
         if !hasAccessibilityAccess() {
             requestAccessibilityAccess()

@@ -74,6 +74,7 @@
 - (BOOL)enableAppAsLoginItem;
 
 - (NSString *)getFolderPath;
+- (NSString *)normalizedFilesystemPath:(NSString *)raw;
 - (void)checkFolderPath;
 - (void)scanDisplays;
 - (void)selectFolder:(NSString* )path;
@@ -94,6 +95,7 @@
 -(void) startPlaylist;
 - (void)startWallpaperRotation;
 - (void)stopWallpaperRotation;
+- (void)restoreSessionAfterLaunch;
 
 
 
@@ -102,7 +104,8 @@
 @property(nonatomic, assign) BOOL generatingThumbImages;
 @property(nonatomic, strong) NSString *currentVideoPath;
 @property(nonatomic, assign) std::list<pid_t> daemonPIDs;
-@property(nonatomic, assign) NSMutableArray<NSString* >* wallpaperList;
+/// Must be strong — assign freed the array and -count crashed on garbage.
+@property(nonatomic, strong) NSMutableArray<NSString *> *wallpaperList;
 @property(assign) int currentWallpaper;
 @property (nonatomic, strong) NSTimer *wallpaperTimer;
 typedef NS_ENUM(NSInteger, RotationType) {
@@ -113,6 +116,8 @@ typedef NS_ENUM(NSInteger, RotationType) {
 @property (nonatomic, assign) RotationType rotationType;
 @property (nonatomic, assign) bool isrotationrunning;
 @property (assign) int rotationDelay;
+
++ (NSInteger)normalizedScaleMode;
 
 
 @end
