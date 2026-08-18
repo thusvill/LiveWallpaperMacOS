@@ -145,9 +145,29 @@ inline CGDirectDisplayID DisplayIDFromUUID(const std::string &uuidString) {
   return id;
 }
 
-inline bool KillProcessByPID(pid_t pid) {
-  if (pid <= 1) {
+#include <libproc.h>
+#include <string.h>
 
+/// Only kill PIDs that are still our wallpaperdaemon — never a recycled PID
+/// belonging to some other process (stale YAML daemon fields used to do that).
+inline bool ProcessIsWallpaperDaemon(pid_t pid) {
+  if (pid <= 1)
+    return false;
+  char pathbuf[PROC_PIDPATHINFO_MAXSIZE];
+  int n = proc_pidpath(pid, pathbuf, sizeof(pathbuf));
+  if (n <= 0)
+    return false;
+  const char *base = strrchr(pathbuf, '/');
+  base = base ? base + 1 : pathbuf;
+  return strcmp(base, "wallpaperdaemon") == 0;
+}
+
+inline bool KillProcessByPID(pid_t pid) {
+  if (pid <= 1)
+    return false;
+
+  if (!ProcessIsWallpaperDaemon(pid)) {
+    // Stale or foreign PID — do not SIGKILL random processes.
     return false;
   }
 
@@ -155,22 +175,22 @@ inline bool KillProcessByPID(pid_t pid) {
 
   for (int i = 0; i < 15; i++) {
     if (kill(pid, 0) != 0 && errno == ESRCH) {
-      std::printf("Process killed: %d\n", pid);
       return true;
     }
     usleep(10000);
   }
+
+  if (!ProcessIsWallpaperDaemon(pid))
+    return true;
 
   kill(pid, SIGKILL);
 
   for (int i = 0; i < 10; i++) {
     if (kill(pid, 0) != 0 && errno == ESRCH) {
-
       return true;
     }
     usleep(10000);
   }
-  printf("Process not killed");
   return false;
 }
 
