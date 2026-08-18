@@ -114,6 +114,8 @@ typedef NS_ENUM(NSInteger, RotationType) {
 @property (nonatomic, assign) bool isrotationrunning;
 @property (assign) int rotationDelay;
 
++ (NSInteger)normalizedScaleMode;
+
 
 @end
 
