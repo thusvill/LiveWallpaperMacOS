@@ -37,7 +37,8 @@ template <> struct convert<Display> {
     node["screen"] = d.screen;
     node["video"] = d.videoPath;
     node["frame"] = d.framePath;
-    node["daemon"] = (int)d.daemon;
+    // Never persist live PIDs — they go stale and must not be kill()-targets.
+    node["daemon"] = 0;
     return node;
   }
 
@@ -52,7 +53,8 @@ template <> struct convert<Display> {
 
     d.videoPath = node["video"] ? node["video"].as<std::string>() : "";
     d.framePath = node["frame"] ? node["frame"].as<std::string>() : "";
-    d.daemon = node["daemon"] ? (pid_t)node["daemon"].as<int>() : 0;
+    // Ignore any historical daemon field
+    d.daemon = 0;
 
     return true;
   }

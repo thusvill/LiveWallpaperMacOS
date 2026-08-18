@@ -21,6 +21,9 @@
 #include "SaveSystem.h"
 #include "SharedConstants.h"
 #import <CoreGraphics/CoreGraphics.h>
+#import <CoreMedia/CoreMedia.h>
+#import <ImageIO/ImageIO.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <IOKit/graphics/IOGraphicsLib.h>
 #include <filesystem>
 #import <mach/mach.h>
@@ -58,72 +61,94 @@ static NSString *folderPath = nil;
     _generatingThumbImages = NO;
     _currentVideoPath = nil;
     _daemonPIDs = std::list<pid_t>();
+    _currentWallpaper = 0;
+    _wallpaperList = [NSMutableArray array];
+    _isrotationrunning = NO;
 
     _wallpaperQueue = dispatch_queue_create("com.livewallpaper.wallpaperQueue",
                                             DISPATCH_QUEUE_CONCURRENT);
     _thumbnailQueue = dispatch_queue_create("com.livewallpaper.thumbnailQueue",
                                             DISPATCH_QUEUE_SERIAL);
-
     _wallpaperSemaphore = dispatch_semaphore_create(2);
-      _currentWallpaper = 0;
-      _wallpaperList = [NSMutableArray array];
-      
-    ScanDisplays();
 
-    [self killAllDaemons];
-    usleep(2);
+    @try {
+      ScanDisplays();
+      [self killAllDaemons];
 
-    displays = SaveSystem::Load();
+      displays = SaveSystem::Load();
+      for (auto &d : displays) {
+        d.daemon = 0;
+      }
 
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-      
+      NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       _rotationType = (RotationType)[defaults integerForKey:@"rtype"];
-      
       _rotationDelay = (int)[defaults integerForKey:@"rdelay"];
-      
-      if(_rotationType == 0){
-          _rotationType = RotationTypeSequential;
-      }
-      if(_rotationDelay < 50){
-          _rotationDelay = 60;
-      }
-      if([defaults boolForKey:@"rotation"]){
-          [self startWallpaperRotation];
-      }
-      
+      if (_rotationType == 0)
+        _rotationType = RotationTypeSequential;
+      if (_rotationDelay < 50)
+        _rotationDelay = 60;
 
-    for (Display display : displays) {
-      CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-      if ([defaults boolForKey:@"random"]) {
-        [self randomWallpapersLid];
-      } else {
-        if (!display.videoPath.empty()) {
-
-          [self
-              startWallpaperWithPath:[NSString
-                                         stringWithUTF8String:display.videoPath
-                                                                  .c_str()]
-                          onDisplays:@[ @(displayID) ]];
-        }
-      }
+      // Defer restore so NSApp finishes launching (avoids init-time crashes
+      // and spawn races with the UI).
+      __weak typeof(self) weakSelf = self;
+      dispatch_after(
+          dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)),
+          dispatch_get_main_queue(), ^{
+            [weakSelf restoreSessionAfterLaunch];
+          });
+    } @catch (NSException *ex) {
+      NSLog(@"WallpaperEngine init exception: %@ — %@", ex.name, ex.reason);
     }
   }
   return self;
 }
 
-- (void)randomWallpapersLid {
+- (void)restoreSessionAfterLaunch {
+  @try {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL randomStartup = [defaults boolForKey:@"random"];
 
-  NSLog(@"Applying Random Wallpapers!");
-
-  for (Display display : displays) {
-
-    if (!display.videoPath.empty()) {
-      CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-      [self startWallpaperWithPath:
-                [self getRandomVideoFileFromFolder:[self getFolderPath]]
-                        onDisplays:@[ @(displayID) ]];
+    if (randomStartup) {
+      [self randomWallpapersLid];
+    } else {
+      for (const Display &display : displays) {
+        if (display.videoPath.empty())
+          continue;
+        NSString *path =
+            [NSString stringWithUTF8String:display.videoPath.c_str()];
+        if (!path.length ||
+            ![[NSFileManager defaultManager] fileExistsAtPath:path]) {
+          NSLog(@"Skip missing saved wallpaper: %@", path);
+          continue;
+        }
+        CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+        if (displayID == kCGNullDirectDisplay)
+          continue;
+        [self startWallpaperWithPath:path onDisplays:@[ @(displayID) ]];
+      }
     }
+
+    if ([defaults boolForKey:@"rotation"]) {
+      [self startWallpaperRotation];
+    }
+  } @catch (NSException *ex) {
+    NSLog(@"restoreSessionAfterLaunch: %@ — %@", ex.name, ex.reason);
+  }
+}
+
+- (void)randomWallpapersLid {
+  NSLog(@"Applying Random Wallpapers!");
+  NSString *folder = [self getFolderPath];
+  for (const Display &display : displays) {
+    CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+    if (displayID == kCGNullDirectDisplay)
+      continue;
+    NSString *pick = [self getRandomVideoFileFromFolder:folder];
+    if (!pick.length) {
+      NSLog(@"randomWallpapersLid: no videos in %@", folder);
+      return;
+    }
+    [self startWallpaperWithPath:pick onDisplays:@[ @(displayID) ]];
   }
 }
 
@@ -208,20 +233,19 @@ static NSString *folderPath = nil;
 }
 
 - (void)screensDidChange:(NSNotification *)note {
-
   NSLog(@"Screens changed");
-    ScanDisplays();
-    for (Display display : displays) {
-
-      if (!display.videoPath.empty()) {
-        CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-        [self startWallpaperWithPath:_currentVideoPath
-                          onDisplays:@[ @(displayID) ]];
-      }
-    }
-    
-    
+  ScanDisplays();
+  // Restore each display's own video path (not a single global current path).
+  for (Display display : displays) {
+    if (display.videoPath.empty())
+      continue;
+    CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
+    if (displayID == kCGNullDirectDisplay)
+      continue;
+    NSString *path =
+        [NSString stringWithUTF8String:display.videoPath.c_str()];
+    [self startWallpaperWithPath:path onDisplays:@[ @(displayID) ]];
+  }
 }
 
 - (NSString *)thumbnailCachePath {
@@ -446,6 +470,66 @@ static NSString *folderPath = nil;
   }
 }
 
+- (BOOL)generateStaticImageForVideoPath:(NSString *)videoPath
+                             outputPath:(NSString *)outputPath {
+  if (!videoPath.length || !outputPath.length)
+    return NO;
+  if (![[NSFileManager defaultManager] fileExistsAtPath:videoPath])
+    return NO;
+
+  NSString *dir = [outputPath stringByDeletingLastPathComponent];
+  if (dir.length) {
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+  }
+
+  NSURL *url = [NSURL fileURLWithPath:videoPath isDirectory:NO];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:url
+                                          options:@{
+                                            AVURLAssetPreferPreciseDurationAndTimingKey : @NO
+                                          }];
+  AVAssetImageGenerator *generator =
+      [[AVAssetImageGenerator alloc] initWithAsset:asset];
+  generator.appliesPreferredTrackTransform = YES;
+  // Cap: enough for desktop fallback under icons, not full 6K aerial master.
+  NSScreen *screen = [NSScreen mainScreen];
+  CGFloat scale = screen.backingScaleFactor > 0 ? screen.backingScaleFactor : 2.0;
+  CGFloat maxW = MIN(screen.frame.size.width * scale, 2560.0);
+  CGFloat maxH = MIN(screen.frame.size.height * scale, 1600.0);
+  generator.maximumSize = CGSizeMake(maxW, maxH);
+  generator.requestedTimeToleranceBefore = CMTimeMake(1, 2);
+  generator.requestedTimeToleranceAfter = CMTimeMake(1, 2);
+
+  NSError *err = nil;
+  CMTime t = CMTimeMakeWithSeconds(1.0, 600);
+  CGImageRef image = [generator copyCGImageAtTime:t actualTime:NULL error:&err];
+  if (!image) {
+    image = [generator copyCGImageAtTime:kCMTimeZero actualTime:NULL error:&err];
+  }
+  if (!image) {
+    NSLog(@"generateStaticImageForVideoPath failed: %@ — %@", videoPath,
+          err.localizedDescription);
+    return NO;
+  }
+
+  CFURLRef cfURL = (__bridge CFURLRef)[NSURL fileURLWithPath:outputPath];
+  CGImageDestinationRef dest = CGImageDestinationCreateWithURL(
+      cfURL, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
+  BOOL ok = NO;
+  if (dest) {
+    CGImageDestinationAddImage(dest, image, NULL);
+    ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+  }
+  CGImageRelease(image);
+  if (ok) {
+    NSLog(@"Static frame saved: %@", outputPath);
+  }
+  return ok;
+}
+
 - (void)generateStaticImageFromAsset:(AVAsset *)asset
                             filename:(NSString *)filename
                        wallpaperPath:(NSString *)wallpaperPath {
@@ -512,7 +596,8 @@ static NSString *folderPath = nil;
 - (void)generateThumbnailsForFolder:(NSString *)folderPath
                      withCompletion:(void (^)(void))completion {
 
-  // Use atomic operation to prevent race condition
+  folderPath = [self normalizedFilesystemPath:folderPath ?: [self getFolderPath]];
+
   @synchronized(self) {
     if (_generatingThumbImages) {
       NSLog(@"Thumbnail generation already in progress, skipping...");
@@ -524,9 +609,18 @@ static NSString *folderPath = nil;
   }
 
   NSString *thumbnailCachePath = [self thumbnailCachePath];
-  NSLog(@"Generating Thumbnails in %@ ...", thumbnailCachePath);
+  NSLog(@"Generating Thumbnails\n  folder: %@\n  cache:  %@", folderPath,
+        thumbnailCachePath);
 
   NSFileManager *fileManager = [NSFileManager defaultManager];
+  BOOL isDir = NO;
+  if (![fileManager fileExistsAtPath:folderPath isDirectory:&isDir] || !isDir) {
+    NSLog(@"Thumbnail folder missing or not a directory: %@", folderPath);
+    _generatingThumbImages = NO;
+    if (completion)
+      completion();
+    return;
+  }
 
   if (![fileManager fileExistsAtPath:thumbnailCachePath]) {
     [fileManager createDirectoryAtPath:thumbnailCachePath
@@ -535,8 +629,12 @@ static NSString *folderPath = nil;
                                  error:nil];
   }
 
-  NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:folderPath
-                                                                error:nil];
+  NSError *listErr = nil;
+  NSArray<NSString *> *files =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&listErr];
+  if (listErr) {
+    NSLog(@"contentsOfDirectory error: %@", listErr.localizedDescription);
+  }
   if (files.count == 0) {
     NSLog(@"No files found in folder: %@", folderPath);
     _generatingThumbImages = NO;
@@ -545,84 +643,140 @@ static NSString *folderPath = nil;
     return;
   }
 
-  // Filter video files and check which need thumbnails
   NSMutableArray<NSString *> *filesToProcess = [NSMutableArray array];
   for (NSString *filename in files) {
-    if (![filename.pathExtension.lowercaseString isEqualToString:@"mp4"] &&
-        ![filename.pathExtension.lowercaseString isEqualToString:@"mov"]) {
+    NSString *ext = filename.pathExtension.lowercaseString;
+    if (![ext isEqualToString:@"mp4"] && ![ext isEqualToString:@"mov"] &&
+        ![ext isEqualToString:@"m4v"]) {
       continue;
     }
-
-    // Check if thumbnail already exists
     NSString *thumbName = [[filename stringByDeletingPathExtension]
         stringByAppendingPathExtension:@"png"];
     NSString *thumbPath =
         [thumbnailCachePath stringByAppendingPathComponent:thumbName];
-
-    BOOL isDir;
-    NSLog(@"THUMB CHECK:\n  filename: %@\n  thumbPath: %@\n  exists: %d isDir: "
-          @"%d",
-          filename, thumbPath,
-          [fileManager fileExistsAtPath:thumbPath isDirectory:&isDir], isDir);
-
     if (![fileManager fileExistsAtPath:thumbPath]) {
       [filesToProcess addObject:filename];
     }
   }
 
   if (filesToProcess.count == 0) {
-    NSLog(@"All thumbnails already exist");
+    NSLog(@"All thumbnails already exist (%lu videos scanned)",
+          (unsigned long)files.count);
     _generatingThumbImages = NO;
     if (completion)
       completion();
     return;
   }
 
-  NSLog(@"Processing %lu videos for thumbnails",
+  NSLog(@"Processing %lu videos for thumbnails (sync grab, concurrent=2)",
         (unsigned long)filesToProcess.count);
 
-  // Use block-scoped variable for counting
-  __block NSInteger completedCount = 0;
-  NSInteger totalCount = filesToProcess.count;
+  // Concurrent but bounded — sync frame grab is reliable for multi-GB aerials.
+  dispatch_queue_t work = dispatch_get_global_queue(QOS_CLASS_UTILITY, 0);
+  dispatch_group_t group = dispatch_group_create();
+  dispatch_semaphore_t slots = dispatch_semaphore_create(2);
+  NSString *folderCopy = [folderPath copy];
+  NSString *cacheCopy = [thumbnailCachePath copy];
 
   for (NSString *filename in filesToProcess) {
-    dispatch_async(_thumbnailQueue, ^{
+    dispatch_group_async(group, work, ^{
+      dispatch_semaphore_wait(slots, DISPATCH_TIME_FOREVER);
       @autoreleasepool {
-        NSString *filePath =
-            [folderPath stringByAppendingPathComponent:filename];
-        NSURL *videoURL = [NSURL fileURLWithPath:filePath];
-
-        if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
-          NSLog(@"Video not found: %@", filePath);
-
-          @synchronized(self) {
-            completedCount++;
-            if (completedCount >= totalCount) {
-              self->_generatingThumbImages = NO;
-              if (completion) {
-                dispatch_async(dispatch_get_main_queue(), completion);
-              }
-            }
-          }
-          return;
-        }
-
-        AVAsset *asset = [AVAsset assetWithURL:videoURL];
-
-        [asset loadValuesAsynchronouslyForKeys:@[ @"tracks", @"duration" ]
-                             completionHandler:^{
-                               [self processThumbnailForAsset:asset
-                                                     filename:filename
-                                                     videoURL:videoURL
-                                               completedCount:&completedCount
-                                                   totalCount:totalCount
-                                                thumbnailPath:thumbnailCachePath
-                                                   completion:completion];
-                             }];
+        [self writeThumbnailSynchronouslyForFilename:filename
+                                          folderPath:folderCopy
+                                       thumbnailRoot:cacheCopy];
       }
+      dispatch_semaphore_signal(slots);
     });
   }
+
+  dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+    self->_generatingThumbImages = NO;
+    NSLog(@"Thumbnail generation finished");
+    if (completion)
+      completion();
+  });
 }
+
+/// Reliable thumbnail for huge HEVC aerials: small max size, t≈1s, sync grab.
+- (BOOL)writeThumbnailSynchronouslyForFilename:(NSString *)filename
+                                    folderPath:(NSString *)folderPath
+                                 thumbnailRoot:(NSString *)thumbnailRoot {
+  NSString *filePath = [folderPath stringByAppendingPathComponent:filename];
+  if (![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
+    NSLog(@"Thumb skip (missing): %@", filePath);
+    return NO;
+  }
+
+  NSString *thumbName = [[filename stringByDeletingPathExtension]
+      stringByAppendingPathExtension:@"png"];
+  NSString *thumbPath =
+      [thumbnailRoot stringByAppendingPathComponent:thumbName];
+  if ([[NSFileManager defaultManager] fileExistsAtPath:thumbPath])
+    return YES;
+
+  NSURL *videoURL = [NSURL fileURLWithPath:filePath isDirectory:NO];
+  AVURLAsset *asset = [AVURLAsset URLAssetWithURL:videoURL
+                                          options:@{
+                                            AVURLAssetPreferPreciseDurationAndTimingKey : @NO
+                                          }];
+
+  AVAssetImageGenerator *generator =
+      [[AVAssetImageGenerator alloc] initWithAsset:asset];
+  generator.appliesPreferredTrackTransform = YES;
+  // Small decode target — UI card is ~300×168; 2× is plenty.
+  generator.maximumSize = CGSizeMake(THUMBNAIL_WIDTH * 2.0, THUMBNAIL_HEIGHT * 2.0);
+  // Wide tolerance: don't seek precisely on multi-GB masters.
+  generator.requestedTimeToleranceBefore = CMTimeMake(2, 1);
+  generator.requestedTimeToleranceAfter = CMTimeMake(2, 1);
+
+  // Prefer t=1s (fast open path); fall back to zero then mid.
+  NSError *err = nil;
+  CMTime times[3] = {
+      CMTimeMakeWithSeconds(1.0, 600),
+      kCMTimeZero,
+      CMTimeMakeWithSeconds(3.0, 600),
+  };
+  CGImageRef image = NULL;
+  for (int i = 0; i < 3; i++) {
+    err = nil;
+    image = [generator copyCGImageAtTime:times[i] actualTime:NULL error:&err];
+    if (image)
+      break;
+  }
+
+  if (!image) {
+    NSLog(@"Thumb FAIL %@: %@", filename, err.localizedDescription);
+    return NO;
+  }
+
+  CFURLRef cfURL = (__bridge CFURLRef)[NSURL fileURLWithPath:thumbPath];
+  CGImageDestinationRef dest = CGImageDestinationCreateWithURL(
+      cfURL, (__bridge CFStringRef)UTTypePNG.identifier, 1, NULL);
+  BOOL wrote = NO;
+  if (dest) {
+    // JPEG-like quality via PNG is fine; keep small.
+    CGImageDestinationAddImage(dest, image, NULL);
+    wrote = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+  }
+  CGImageRelease(image);
+
+  if (wrote) {
+    NSLog(@"Thumb OK %@", filename);
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [[NSNotificationCenter defaultCenter]
+          postNotificationName:@"ThumbnailSaved"
+                        object:nil
+                      userInfo:@{@"path" : thumbPath}];
+    });
+  } else {
+    NSLog(@"Thumb write failed %@", thumbPath);
+  }
+  return wrote;
+}
+
+// Kept for any legacy callers; routes into the sync writer.
 - (void)processThumbnailForAsset:(AVAsset *)asset
                         filename:(NSString *)filename
                         videoURL:(NSURL *)videoURL
@@ -630,109 +784,20 @@ static NSString *folderPath = nil;
                       totalCount:(NSInteger)totalCount
                    thumbnailPath:(NSString *)thumbnailPath
                       completion:(void (^)(void))completion {
-
-  NSError *error = nil;
-
-  AVKeyValueStatus trackStatus = [asset statusOfValueForKey:@"tracks"
-                                                      error:&error];
-  AVKeyValueStatus durationStatus = [asset statusOfValueForKey:@"duration"
-                                                         error:&error];
-
-  if (trackStatus != AVKeyValueStatusLoaded ||
-      durationStatus != AVKeyValueStatusLoaded) {
-    NSLog(@"Failed to load asset metadata for %@: %@", filename,
-          error.localizedDescription);
-
+  NSString *folder = [videoURL.path stringByDeletingLastPathComponent];
+  [self writeThumbnailSynchronouslyForFilename:filename
+                                    folderPath:folder
+                                 thumbnailRoot:thumbnailPath];
+  if (completedCount) {
     @synchronized(self) {
       (*completedCount)++;
       if (*completedCount >= totalCount) {
         self->_generatingThumbImages = NO;
-        if (completion) {
+        if (completion)
           dispatch_async(dispatch_get_main_queue(), completion);
-        }
       }
     }
-    return;
   }
-
-  AVAssetImageGenerator *generator =
-      [[AVAssetImageGenerator alloc] initWithAsset:asset];
-  generator.appliesPreferredTrackTransform = YES;
-
-  NSArray<AVAssetTrack *> *videoTracks =
-      [asset tracksWithMediaType:AVMediaTypeVideo];
-  if (videoTracks.count == 0) {
-    NSLog(@"No video track for %@", filename);
-
-    @synchronized(self) {
-      (*completedCount)++;
-      if (*completedCount >= totalCount) {
-        self->_generatingThumbImages = NO;
-        if (completion) {
-          dispatch_async(dispatch_get_main_queue(), completion);
-        }
-      }
-    }
-    return;
-  }
-
-  // Configure thumbnail size
-  NSScreen *screen = [NSScreen mainScreen];
-  CGFloat scale = screen ? screen.backingScaleFactor : 2.0;
-  generator.maximumSize = CGSizeMake(THUMBNAIL_WIDTH * scale, THUMBNAIL_HEIGHT * scale);
-
-  Float64 midpoint = CMTimeGetSeconds(asset.duration) / 2.0;
-  CMTime targetTime = CMTimeMakeWithSeconds(midpoint, asset.duration.timescale);
-
-  NSString *thumbName = [[filename stringByDeletingPathExtension]
-      stringByAppendingPathExtension:@"png"];
-  NSString *thumbPath =
-      [thumbnailPath stringByAppendingPathComponent:thumbName];
-  NSURL *thumbURL = [NSURL fileURLWithPath:thumbPath];
-
-  [generator
-      generateCGImagesAsynchronouslyForTimes:@[ [NSValue
-                                                 valueWithCMTime:targetTime] ]
-                           completionHandler:^(
-                               CMTime requestedTime, CGImageRef cgImage,
-                               CMTime actualTime,
-                               AVAssetImageGeneratorResult result,
-                               NSError *imgError) {
-                             if (result == AVAssetImageGeneratorSucceeded &&
-                                 cgImage != NULL) {
-                               CGImageRef copy = CGImageCreateCopy(cgImage);
-
-                               CGImageDestinationRef dest =
-                                   CGImageDestinationCreateWithURL(
-                                       (__bridge CFURLRef)thumbURL,
-                                       (__bridge CFStringRef)
-                                           UTTypePNG.identifier,
-                                       1, NULL);
-
-                               if (dest) {
-                                 CGImageDestinationAddImage(dest, copy, NULL);
-                                 CGImageDestinationFinalize(dest);
-                                 CFRelease(dest);
-                               }
-
-                               CGImageRelease(copy);
-
-                             } else {
-                               NSLog(@"Thumbnail generation failed for %@: %@",
-                                     filename, imgError.localizedDescription);
-                             }
-
-                             @synchronized(self) {
-                               (*completedCount)++;
-                               if (*completedCount >= totalCount) {
-                                 self->_generatingThumbImages = NO;
-                                 if (completion) {
-                                   dispatch_async(dispatch_get_main_queue(),
-                                                  completion);
-                                 }
-                               }
-                             }
-                           }];
 }
 
 - (void)saveThumbnailImage:(CGImageRef)image
@@ -959,10 +1024,10 @@ static NSString *folderPath = nil;
       stringByAppendingPathComponent:imageFilename];
 
   NSFileManager *fm = [NSFileManager defaultManager];
-  if (![fm fileExistsAtPath:imagePath] && !_generatingImages) {
-    NSLog(@"Static wallpaper not found, generating for: %@", videoPath);
-    [self generateStaticWallpapersForFolder:[self getFolderPath]
-                             withCompletion:nil];
+  if (![fm fileExistsAtPath:imagePath]) {
+    NSLog(@"Static wallpaper missing — generating single frame for: %@",
+          videoPath.lastPathComponent);
+    [self generateStaticImageForVideoPath:videoPath outputPath:imagePath];
   }
   NSMutableArray<NSNumber *> *screensToUse = [displayIDs mutableCopy];
   if (screensToUse.count == 0) {
@@ -1000,17 +1065,9 @@ static NSString *folderPath = nil;
   float volume =
       [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
   NSString *volumeStr = [NSString stringWithFormat:@"%.2f", volume];
-  NSString *scaleMode =
-      [[NSUserDefaults standardUserDefaults] stringForKey:@"scale_mode"];
-
-  if (!scaleMode || scaleMode.length == 0) {
-    scaleMode = @"fill";
-    [[NSUserDefaults standardUserDefaults] setObject:scaleMode
-                                              forKey:@"scale_mode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-  }
-
-  NSLog(@"Scaling mode: %@", scaleMode);
+  NSInteger scaleModeInt = [WallpaperEngine normalizedScaleMode];
+  NSString *scaleMode = [NSString stringWithFormat:@"%ld", (long)scaleModeInt];
+  NSLog(@"Scaling mode: %ld", (long)scaleModeInt);
 
   if (!displayID) {
     NSLog(@"Display ID not valid %u", displayID);
@@ -1068,10 +1125,43 @@ static NSString *folderPath = nil;
       CFSTR("com.live.wallpaper.terminate"), NULL, NULL, true);
 }
 
+/// Normalize user/folder paths: expand ~, strip file://, decode %20, drop trailing slash.
+- (NSString *)normalizedFilesystemPath:(NSString *)raw {
+  if (!raw.length)
+    return raw;
+
+  NSString *path = [raw
+      stringByTrimmingCharactersInSet:[NSCharacterSet
+                                          whitespaceAndNewlineCharacterSet]];
+
+  if ([path hasPrefix:@"file:"]) {
+    NSURL *url = [NSURL URLWithString:path];
+    if (url.path.length)
+      path = url.path;
+  }
+  NSString *decoded = [path stringByRemovingPercentEncoding];
+  if (decoded.length)
+    path = decoded;
+
+  path = [path stringByExpandingTildeInPath];
+
+  while (path.length > 1 && [path hasSuffix:@"/"]) {
+    path = [path substringToIndex:path.length - 1];
+  }
+  return path;
+}
+
 - (void)checkFolderPath {
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   if ([defaults objectForKey:@"WallpaperFolder"]) {
-    folderPath = [defaults stringForKey:@"WallpaperFolder"];
+    folderPath =
+        [self normalizedFilesystemPath:[defaults stringForKey:@"WallpaperFolder"]];
+    if (folderPath.length &&
+        ![folderPath isEqualToString:[defaults stringForKey:@"WallpaperFolder"]]) {
+      [defaults setObject:folderPath forKey:@"WallpaperFolder"];
+      [defaults synchronize];
+      NSLog(@"Healed WallpaperFolder pref → %@", folderPath);
+    }
   } else if (!folderPath) {
     folderPath = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
     [defaults setObject:folderPath forKey:@"WallpaperFolder"];
@@ -1084,7 +1174,6 @@ static NSString *folderPath = nil;
   NSString *path = [defaults stringForKey:@"WallpaperFolder"];
 
   if (!path) {
-
     NSString *cacheDir =
         [[[NSFileManager defaultManager]
              URLsForDirectory:NSCachesDirectory
@@ -1096,92 +1185,102 @@ static NSString *folderPath = nil;
     [defaults synchronize];
   }
 
+  path = [self normalizedFilesystemPath:path];
+  if (path.length &&
+      ![path isEqualToString:[defaults stringForKey:@"WallpaperFolder"]]) {
+    [defaults setObject:path forKey:@"WallpaperFolder"];
+    [defaults synchronize];
+  }
+  folderPath = path;
   return path;
 }
 
-- (void)checkWallpapers{
-    if(_wallpaperList.count > 0){
-        [_wallpaperList removeAllObjects];
+- (void)checkWallpapers {
+  if (!_wallpaperList) {
+    _wallpaperList = [NSMutableArray array];
+  } else {
+    [_wallpaperList removeAllObjects];
+  }
+  NSFileManager *fileManager = [NSFileManager defaultManager];
+  NSError *error = nil;
+  folderPath = [self getFolderPath];
+  NSArray<NSString *> *allFiles =
+      [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
+  if (error || !allFiles) {
+    NSLog(@"Error reading directory: %@", error.localizedDescription);
+    return;
+  }
+  for (NSString *fileName in allFiles) {
+    NSString *ext = [[fileName pathExtension] lowercaseString];
+    if ([ext isEqualToString:@"mp4"] || [ext isEqualToString:@"mov"] ||
+        [ext isEqualToString:@"m4v"]) {
+      [_wallpaperList addObject:[folderPath stringByAppendingPathComponent:fileName]];
     }
-    
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSError *error = nil;
-    folderPath = [self getFolderPath];
-    NSArray<NSString *> *allFiles =
-        [fileManager contentsOfDirectoryAtPath:folderPath error:&error];
-
-    if (error) {
-      NSLog(@"Error reading directory: %@", error.localizedDescription);
-        NSLog(@"Wallaper List returns Empty");
-        return;
-      
-    }
-    
-    for (NSString *fileName in allFiles) {
-      NSString *fileExtension = [[fileName pathExtension] lowercaseString];
-
-      if ([fileExtension isEqualToString:@"mp4"] ||
-          [fileExtension isEqualToString:@"mov"]) {
-        NSString *fullPath = [folderPath stringByAppendingPathComponent:fileName];
-        [_wallpaperList addObject:fullPath];
-          NSLog(@"detected %@", fullPath);
-      }
-    }
-
-    if (_wallpaperList.count == 0) {
-        NSLog(@"Folder is empty, return zero for playlist");
-        return;
-    }
-    
+  }
+  NSLog(@"Playlist has %lu videos", (unsigned long)_wallpaperList.count);
 }
 
--(void) nextWallpaper{
-    
-    if(_rotationType == 1){
-        if (_wallpaperList == nil || _wallpaperList.count == 0) {
-                NSLog(@"⚠️ Cannot rotate: wallpaperList is empty.");
-                [self stopWallpaperRotation];
-                return;
-            }
-        
-        _currentWallpaper = (_currentWallpaper + 1) % _wallpaperList.count;
-        for (Display display : displays) {
-
-          if (!display.videoPath.empty()) {
-            CGDirectDisplayID displayID = DisplayIDFromUUID(display.uuid);
-
-            [self startWallpaperWithPath:
-             _wallpaperList[_currentWallpaper]
-                              onDisplays:@[ @(displayID) ]];
-          }
-        }
-        
-    }else if(_rotationType == 2){
-        [self randomWallpapersLid];
+- (void)nextWallpaper {
+  @try {
+    if (!_wallpaperList || _wallpaperList.count == 0)
+      [self checkWallpapers];
+    if (!_wallpaperList || _wallpaperList.count == 0) {
+      NSLog(@"Cannot rotate: empty playlist");
+      [self stopWallpaperRotation];
+      return;
     }
+    if (_rotationType == RotationTypeRandom) {
+      [self randomWallpapersLid];
+      return;
+    }
+    NSUInteger count = _wallpaperList.count;
+    _currentWallpaper = (_currentWallpaper + 1) % (int)count;
+    if (_currentWallpaper < 0 || _currentWallpaper >= (int)count)
+      _currentWallpaper = 0;
+    NSString *path = _wallpaperList[(NSUInteger)_currentWallpaper];
+    if (!path.length || ![[NSFileManager defaultManager] fileExistsAtPath:path])
+      return;
+    NSMutableArray<NSNumber *> *ids = [NSMutableArray array];
+    for (const Display &display : displays) {
+      CGDirectDisplayID did = DisplayIDFromUUID(display.uuid);
+      if (did != kCGNullDirectDisplay)
+        [ids addObject:@(did)];
+    }
+    if (ids.count == 0) {
+      NSNumber *mainID = [[NSScreen mainScreen] deviceDescription][@"NSScreenNumber"];
+      if (mainID) [ids addObject:mainID];
+    }
+    [self startWallpaperWithPath:path onDisplays:ids];
+  } @catch (NSException *ex) {
+    NSLog(@"nextWallpaper: %@ — %@", ex.name, ex.reason);
+  }
 }
 - (void)stopWallpaperRotation {
-    [self.wallpaperTimer invalidate];
-    self.wallpaperTimer = nil;
-    NSLog(@"Wallpaper rotation stoped.");
+  [self.wallpaperTimer invalidate];
+  self.wallpaperTimer = nil;
+  _isrotationrunning = NO;
+  NSLog(@"Wallpaper rotation stopped.");
 }
-- (void)startWallpaperRotation{
-    int delay = _rotationDelay;
-    [self stopWallpaperRotation];
-    [self checkWallpapers];
-    
-    if (_currentWallpaper >= _wallpaperList.count) {
-            _currentWallpaper = 0;
-        }
-
-    self.wallpaperTimer = [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
-                                                           target:self
-                                                         selector:@selector(nextWallpaper)
-                                                         userInfo:nil
-                                                          repeats:YES];
-    
-    [self.wallpaperTimer fire];
-    NSLog(@"Wallpaper rotation started with %d delay.", delay);
+- (void)startWallpaperRotation {
+  int delay = _rotationDelay > 0 ? _rotationDelay : 60;
+  [self stopWallpaperRotation];
+  [self checkWallpapers];
+  if (!_wallpaperList || _wallpaperList.count == 0) {
+    NSLog(@"Wallpaper rotation not started — empty playlist");
+    return;
+  }
+  if (_currentWallpaper < 0 || _currentWallpaper >= (int)_wallpaperList.count)
+    _currentWallpaper = 0;
+  self.wallpaperTimer =
+      [NSTimer scheduledTimerWithTimeInterval:(NSTimeInterval)delay
+                                       target:self
+                                     selector:@selector(nextWallpaper)
+                                     userInfo:nil
+                                      repeats:YES];
+  [[NSRunLoop mainRunLoop] addTimer:self.wallpaperTimer forMode:NSRunLoopCommonModes];
+  _isrotationrunning = YES;
+  NSLog(@"Wallpaper rotation started: delay=%ds items=%lu", delay,
+        (unsigned long)_wallpaperList.count);
 }
 
 - (void)scanDisplays {
@@ -1206,8 +1305,12 @@ static NSString *folderPath = nil;
 }
 
 - (void)selectFolder:(NSString *)path {
+  NSString *normalized = [self normalizedFilesystemPath:path];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-  [defaults setObject:path forKey:@"WallpaperFolder"];
+  [defaults setObject:normalized forKey:@"WallpaperFolder"];
+  [defaults synchronize];
+  folderPath = normalized;
+  NSLog(@"Wallpaper folder set to: %@", normalized);
 }
 
 - (void)terminateApplication {
@@ -1244,16 +1347,45 @@ static NSString *folderPath = nil;
           CFSTR("com.live.wallpaper.volumeChanged"), NULL, NULL, true);
     }
 
--(void)updateScaleMode:(NSInteger)mode{
-    
-    [[NSUserDefaults standardUserDefaults] setObject:@(mode)
-                                               forKey:@"scale_mode"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    
-    CFNotificationCenterPostNotification(
-        CFNotificationCenterGetDarwinNotifyCenter(),
-        CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+- (void)updateScaleMode:(NSInteger)mode {
+  NSInteger clamped = mode;
+  if (clamped < 0 || clamped > 4)
+    clamped = 0;
+  [[NSUserDefaults standardUserDefaults] setInteger:clamped forKey:@"scale_mode"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+}
+
+
++ (NSInteger)normalizedScaleMode {
+  NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+  id raw = [defaults objectForKey:@"scale_mode"];
+  if ([raw isKindOfClass:[NSNumber class]]) {
+    NSInteger v = [(NSNumber *)raw integerValue];
+    if (v >= 0 && v <= 4)
+      return v;
+    return 0;
+  }
+  if ([raw isKindOfClass:[NSString class]]) {
+    NSString *s = [(NSString *)raw lowercaseString];
+    NSInteger mapped = 0;
+    if ([s isEqualToString:@"fill"] || [s isEqualToString:@"0"])
+      mapped = 0;
+    else if ([s isEqualToString:@"fit"] || [s isEqualToString:@"1"])
+      mapped = 1;
+    else if ([s isEqualToString:@"stretch"] || [s isEqualToString:@"2"])
+      mapped = 2;
+    else if ([s isEqualToString:@"center"] || [s isEqualToString:@"3"])
+      mapped = 3;
+    else if ([s isEqualToString:@"heightfill"] || [s isEqualToString:@"4"])
+      mapped = 4;
+    [defaults setInteger:mapped forKey:@"scale_mode"];
+    [defaults synchronize];
+    return mapped;
+  }
+  return 0;
 }
 
 
