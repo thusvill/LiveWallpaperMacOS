@@ -1090,10 +1090,43 @@ static NSString *folderPath = nil;
       CFSTR("com.live.wallpaper.terminate"), NULL, NULL, true);
 }
 
+/// Normalize user/folder paths: expand ~, strip file://, decode %20, drop trailing slash.
+- (NSString *)normalizedFilesystemPath:(NSString *)raw {
+  if (!raw.length)
+    return raw;
+
+  NSString *path = [raw
+      stringByTrimmingCharactersInSet:[NSCharacterSet
+                                          whitespaceAndNewlineCharacterSet]];
+
+  if ([path hasPrefix:@"file:"]) {
+    NSURL *url = [NSURL URLWithString:path];
+    if (url.path.length)
+      path = url.path;
+  }
+  NSString *decoded = [path stringByRemovingPercentEncoding];
+  if (decoded.length)
+    path = decoded;
+
+  path = [path stringByExpandingTildeInPath];
+
+  while (path.length > 1 && [path hasSuffix:@"/"]) {
+    path = [path substringToIndex:path.length - 1];
+  }
+  return path;
+}
+
 - (void)checkFolderPath {
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
   if ([defaults objectForKey:@"WallpaperFolder"]) {
-    folderPath = [defaults stringForKey:@"WallpaperFolder"];
+    folderPath =
+        [self normalizedFilesystemPath:[defaults stringForKey:@"WallpaperFolder"]];
+    if (folderPath.length &&
+        ![folderPath isEqualToString:[defaults stringForKey:@"WallpaperFolder"]]) {
+      [defaults setObject:folderPath forKey:@"WallpaperFolder"];
+      [defaults synchronize];
+      NSLog(@"Healed WallpaperFolder pref → %@", folderPath);
+    }
   } else if (!folderPath) {
     folderPath = [NSHomeDirectory() stringByAppendingPathComponent:@"LiveWall"];
     [defaults setObject:folderPath forKey:@"WallpaperFolder"];
@@ -1106,7 +1139,6 @@ static NSString *folderPath = nil;
   NSString *path = [defaults stringForKey:@"WallpaperFolder"];
 
   if (!path) {
-
     NSString *cacheDir =
         [[[NSFileManager defaultManager]
              URLsForDirectory:NSCachesDirectory
@@ -1118,6 +1150,13 @@ static NSString *folderPath = nil;
     [defaults synchronize];
   }
 
+  path = [self normalizedFilesystemPath:path];
+  if (path.length &&
+      ![path isEqualToString:[defaults stringForKey:@"WallpaperFolder"]]) {
+    [defaults setObject:path forKey:@"WallpaperFolder"];
+    [defaults synchronize];
+  }
+  folderPath = path;
   return path;
 }
 
@@ -1231,8 +1270,12 @@ static NSString *folderPath = nil;
 }
 
 - (void)selectFolder:(NSString *)path {
+  NSString *normalized = [self normalizedFilesystemPath:path];
   NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-  [defaults setObject:path forKey:@"WallpaperFolder"];
+  [defaults setObject:normalized forKey:@"WallpaperFolder"];
+  [defaults synchronize];
+  folderPath = normalized;
+  NSLog(@"Wallpaper folder set to: %@", normalized);
 }
 
 - (void)terminateApplication {
