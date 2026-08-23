@@ -24,6 +24,8 @@
 "random_on_lid" = "Random Wallpaper on Lid Wakeup (Requires Application Restart)";
 "pause_when_active" = "Pause When App is Active";
 "video_volume" = "Video Volume";
+"video_fps" = "Video FPS";
+"video_fps_native_format" = "Video: %d FPS";
 "optimize_codecs" = "Optimize Video Codecs";
 "optimize" = "Optimize 🛠️";
 "clear_cache" = "Clear Cache";

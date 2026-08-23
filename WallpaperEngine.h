@@ -83,6 +83,10 @@
 
 -(void)updateVolume:(double) value;
 -(void)updateScaleMode:(NSInteger) mode;
+-(void)updateFPS:(double) value;
+-(void)updateSpeed:(double) value;
+- (void)videoNativeFPSForURL:(NSURL *)url
+                  completion:(void (^)(double fps))completion;
 
 -(void) terminateApplication;
 

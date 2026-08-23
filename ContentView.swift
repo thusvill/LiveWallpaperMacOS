@@ -123,6 +123,10 @@ enum L {
     static let randomOnLid = NSLocalizedString("Random on lid", comment: "")
     static let pauseWhenActive = NSLocalizedString("Pause when active", comment: "")
     static let videoVolume = NSLocalizedString("Video volume", comment: "")
+    static let videoFPS = NSLocalizedString("video_fps", comment: "")
+    static let videoFPSNativeFormat = NSLocalizedString("video_fps_native_format", comment: "")
+    static let playbackSpeed = NSLocalizedString("playback_speed", comment: "")
+    static let playbackSpeedFormat = NSLocalizedString("playback_speed_format", comment: "")
     static let optimizeCodecs = NSLocalizedString("Optimize codecs", comment: "")
     static let optimize = NSLocalizedString("Optimize", comment: "")
     static let clearCache = NSLocalizedString("Clear cache", comment: "")
@@ -148,6 +152,8 @@ enum UserDefaultsKeys {
     static let randomOnLid = "random_lid"
     static let pauseOnAppFocus = "pauseOnAppFocus"
     static let volumePercentage = "wallpapervolumeprecentage"
+    static let playbackFPS = "wallpaperfps"
+    static let playbackSpeed = "wallpaperspeed"
     static let launchAtLogin = "LaunchAtLogin"
     static let appLanguage = "app_language"
     static let vignetteBar = "vinttage_bar"
@@ -392,6 +398,7 @@ class DisplayManager: ObservableObject {
     }
 
     deinit {
+        
         CGDisplayRemoveReconfigurationCallback(
             displayReconfigCallback, Unmanaged.passUnretained(self).toOpaque())
     }
@@ -759,6 +766,63 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Video FPS
+                    SettingRow(title: L.videoFPS) {
+                        HStack {
+                            Slider(
+                                value: $viewModel.playbackFPS,
+                                in: viewModel.minFPS...viewModel.maxFPS,
+                                step: 1
+                            )
+                            .frame(width: 200)
+                            .onChange(of: viewModel.playbackFPS) { newValue in
+                                sharedEngine?.updateFPS(newValue)
+                            }
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("\(Int(viewModel.playbackFPS)) FPS")
+                                    .monospacedDigit()
+                                if viewModel.videoNativeFPS > 0 {
+                                    Text(
+                                        String(
+                                            format: L.videoFPSNativeFormat,
+                                            Int(viewModel.videoNativeFPS))
+                                    )
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(width: 80, alignment: .leading)
+                        }
+                    }
+                    
+                    SettingRow(title: L.playbackSpeed) {
+                        HStack {
+                            Slider(
+                                value: $viewModel.playbackSpeed,
+                                in: 0.0...1.0,
+                                step: 0.1
+                            )
+                            .frame(width: 200)
+                            .onChange(of: viewModel.playbackSpeed) { newValue in
+                                sharedEngine?.updateSpeed(newValue)
+                            }
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("\(Int(viewModel.playbackSpeed)) speed")
+                                    .monospacedDigit()
+                                if viewModel.playbackSpeed > 1 {
+                                    Text(
+                                        String(
+                                            format: L.playbackSpeedFormat,
+                                            Int(viewModel.nativePlaybackSpeed))
+                                    )
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                }
+                            }
+                            .frame(width: 80, alignment: .leading)
+                        }
+                    }
+
                     Divider()
 
                     // Optimize Videos
@@ -924,6 +988,10 @@ class WallpaperViewModel: ObservableObject {
     @Published var pauseOnAppFocus: Bool = true
     @Published var volume: Double = 50.0
     @Published var vinttageBar: Bool = true
+    @Published var playbackFPS: Double = 30.0
+    @Published var videoNativeFPS: Double = 0.0
+    @Published var playbackSpeed: Double = 1.0
+    @Published var nativePlaybackSpeed: Double = 1.0
 
     private var currentReloadID = UUID()
     private let reloadIDLock = NSLock()
@@ -936,9 +1004,9 @@ class WallpaperViewModel: ObservableObject {
         self.engine.setupNotifications()
     }
 
-    func invalidate() {
-        engine.removeNotifications()
-    }
+    
+    
+    
 
     func loadSettings() {
         folderPath = engine.getFolderPath()
@@ -947,6 +1015,40 @@ class WallpaperViewModel: ObservableObject {
         pauseOnAppFocus = defaults.bool(forKey: UserDefaultsKeys.pauseOnAppFocus)
         volume = Double(defaults.float(forKey: UserDefaultsKeys.volumePercentage))
         vinttageBar = defaults.bool(forKey: UserDefaultsKeys.vignetteBar)
+        // 0 = "native"; resolved into a concrete value once the video's
+        // nominal FPS is probed in refreshNativeFPS().
+        playbackFPS = defaults.double(forKey: UserDefaultsKeys.playbackFPS)
+        if playbackFPS <= 0 { playbackFPS = 30.0 }
+        refreshNativeFPS()
+    }
+
+    /// Slider bounds mirror the daemon's clamp rule: [0.25x … 2x] of the
+    /// current video's nominal FPS, bounded by the absolute range 1…120.
+    var minFPS: Double {
+        let native = videoNativeFPS > 0 ? videoNativeFPS : 30.0
+        return max(1.0, floor(native * 0.25))
+    }
+
+    var maxFPS: Double {
+        let native = videoNativeFPS > 0 ? videoNativeFPS : 30.0
+        return min(120.0, ceil(native * 2.0))
+    }
+
+    /// Probe the current wallpaper video's nominal FPS (async, engine-side)
+    /// and clamp the slider value into the video-specific range. The engine's
+    /// completion already runs on the main queue.
+    func refreshNativeFPS() {
+        let path = engine.currentVideoPath ?? ""
+        guard !path.isEmpty else { return }
+        engine.videoNativeFPS(for: URL(fileURLWithPath: path)) { [weak self] fps in
+            MainActor.assumeIsolated {
+                guard let self = self, fps > 0 else { return }
+                self.videoNativeFPS = fps
+                let stored = self.defaults.double(forKey: UserDefaultsKeys.playbackFPS)
+                let resolved = stored > 0 ? stored : fps
+                self.playbackFPS = min(max(resolved, self.minFPS), self.maxFPS)
+            }
+        }
     }
 
     func reloadContent() {
@@ -1013,6 +1115,7 @@ class WallpaperViewModel: ObservableObject {
     func startWallpaper(video: VideoItem, displays: [UInt32]) {
         let arr = displays.map { NSNumber(value: $0) }
         engine.startWallpaper(withPath: video.path, onDisplays: arr)
+        refreshNativeFPS()
     }
 
     func clearCache() {

@@ -201,7 +201,8 @@ static NSString *folderPath = nil;
                    queue:[NSOperationQueue mainQueue]
               usingBlock:^(NSNotification *_Nonnull note) {
                 [self handleSpaceChange:note];
-              }];
+              }
+              ];
 
   [[NSWorkspace sharedWorkspace].notificationCenter
       addObserverForName:NSWorkspaceDidWakeNotification
@@ -1356,6 +1357,90 @@ static NSString *folderPath = nil;
   CFNotificationCenterPostNotification(
       CFNotificationCenterGetDarwinNotifyCenter(),
       CFSTR("com.live.wallpaper.scaleModeChanged"), NULL, NULL, true);
+}
+
+/// Absolute slider bounds shared with the daemon; per-video clamping happens
+/// daemon-side against the asset's nominal frame rate.
+- (void)updateFPS:(double)value {
+  double clamped = value;
+  if (!isfinite(clamped))
+    clamped = 0.0;
+  if (clamped != 0.0) {
+    if (clamped < 1.0)
+      clamped = 1.0;
+    if (clamped > 120.0)
+      clamped = 120.0;
+  }
+
+  NSLog(@"FPS slider: %.1f → saved %.1f (0 = native)", value, clamped);
+
+  [[NSUserDefaults standardUserDefaults] setDouble:clamped forKey:@"wallpaperfps"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.fpsChanged"), NULL, NULL, true);
+}
+
+/// Smooth playback speed multiplier (independent of the FPS stylisation slider).
+/// 1.0 = normal, 0.25 = quarter-speed, 2.0 = double-speed.
+- (void)updateSpeed:(double)value {
+  double clamped = value;
+  if (!isfinite(clamped))
+    clamped = 1.0;
+  if (clamped < 0.25)
+    clamped = 0.25;
+  if (clamped > 4.0)
+    clamped = 4.0;
+
+  NSLog(@"Speed slider: %.2f → saved %.2f", value, clamped);
+
+  [[NSUserDefaults standardUserDefaults] setDouble:clamped forKey:@"wallpaperspeed"];
+  [[NSUserDefaults standardUserDefaults] synchronize];
+
+  CFNotificationCenterPostNotification(
+      CFNotificationCenterGetDarwinNotifyCenter(),
+      CFSTR("com.live.wallpaper.speedChanged"), NULL, NULL, true);
+}
+
+/// Reports the video's nominal frame rate (nominalFrameRate, then
+/// minFrameDuration, then 30.0 fallback) so the UI can bound its slider.
+- (void)videoNativeFPSForURL:(NSURL *)url
+                  completion:(void (^)(double fps))completion {
+  if (!url || !url.path.length ||
+      ![[NSFileManager defaultManager] fileExistsAtPath:url.path]) {
+    completion(0.0);
+    return;
+  }
+
+  AVAsset *asset = [AVAsset assetWithURL:url];
+  [asset loadValuesAsynchronouslyForKeys:@[ @"tracks" ]
+                       completionHandler:^{
+                         double fps = 0.0;
+                         if ([asset statusOfValueForKey:@"tracks" error:nil] ==
+                             AVKeyValueStatusLoaded) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                           AVAssetTrack *track =
+                               [[asset tracksWithMediaType:AVMediaTypeVideo]
+                                   firstObject];
+                           if (track) {
+                             fps = track.nominalFrameRate;
+                             if (!(fps > 0.0)) {
+                               CMTime d = track.minFrameDuration;
+                               if (d.timescale > 0 && d.value > 0)
+                                 fps = (double)d.timescale / (double)d.value;
+                             }
+                           }
+#pragma clang diagnostic pop
+                         }
+                         if (!(fps > 0.0) || !isfinite(fps))
+                           fps = 30.0;
+                         dispatch_async(dispatch_get_main_queue(), ^{
+                           if (completion)
+                             completion(fps);
+                         });
+                       }];
 }
 
 

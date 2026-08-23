@@ -50,6 +50,12 @@
 @property(nonatomic, weak) NSScreen *targetScreen;
 @property(nonatomic, strong) AVAsset *asset;
 @property(nonatomic, assign) CGFloat targetPlaybackRate;
+// FPS control: nominalFPS comes from the loaded asset; userFPS is the
+// user-requested playback FPS (0 = native). Effective rate = clamped / nominal.
+@property(nonatomic, assign) CGFloat videoNominalFPS;
+@property(nonatomic, assign) double userPlaybackFPS;
+// Smooth speed multiplier (1.0 = normal). Independent of FPS stylisation.
+@property(nonatomic, assign) double userPlaybackSpeed;
 @property(nonatomic, assign) BOOL reducedPerformanceMode;
 @property(nonatomic, assign) CGDirectDisplayID targetDisplayID;
 @property(nonatomic, assign) BOOL runningOnBattery;
@@ -109,6 +115,11 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
     _videoPath = videoPath;
     _targetScreen = targetScreen;
     _targetPlaybackRate = 1.0f;
+    _videoNominalFPS = 30.0;
+    _userPlaybackFPS = [defaults doubleForKey:@"wallpaperfps"];
+    _userPlaybackSpeed = [defaults doubleForKey:@"wallpaperspeed"];
+    if (_userPlaybackSpeed <= 0.0 || !isfinite(_userPlaybackSpeed))
+      _userPlaybackSpeed = 1.0;
     _reducedPerformanceMode = NO;
 
     NSNumber *screenNumber = targetScreen.deviceDescription[@"NSScreenNumber"];
@@ -569,6 +580,25 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   }
 
   AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:urlAsset];
+  // "tracks" was preloaded above, so synchronous track access is safe here.
+  {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    AVAssetTrack *videoTrack =
+        [[urlAsset tracksWithMediaType:AVMediaTypeVideo] firstObject];
+    CGFloat nominal = videoTrack ? videoTrack.nominalFrameRate : 0.0;
+    if (!(nominal > 0.0) && videoTrack) {
+      CMTime d = videoTrack.minFrameDuration;
+      if (d.timescale > 0 && d.value > 0)
+        nominal = (CGFloat)d.timescale / (CGFloat)d.value;
+    }
+#pragma clang diagnostic pop
+    if (!(nominal > 0.0) || !isfinite(nominal))
+      nominal = 30.0;
+    self.videoNominalFPS = nominal;
+    NSLog(@"[Daemon] video nominal FPS: %.2f (user requested %.1f, clamped %.1f)",
+          nominal, self.userPlaybackFPS, [self clampedPlaybackFPS]);
+  }
   // Pixel-based decode cap (not points) — fixes mushy/failed 4K–6K aerial decode.
   CGSize maxPixels = [self pixelSizeForTargetScreen];
   item.preferredMaximumResolution = maxPixels;
@@ -652,6 +682,7 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   }
 
   [self reassertDesktopWindowGeometry];
+  self.targetPlaybackRate = [self fpsRateFactor];
   [player playImmediatelyAtRate:self.targetPlaybackRate > 0
                                     ? self.targetPlaybackRate
                                     : 1.0f];
@@ -1067,8 +1098,10 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
                                   MAX(floor(targetResolution.height * downscale), 360.0));
   }
 
-  // When fully covered, slow slightly to save decode; keep 1.0 when visible.
-  self.targetPlaybackRate = self.visibilityReductionActive ? 0.85f : 1.0f;
+  // When fully covered, slow slightly to save decode; keep user FPS when
+  // visible. FPS factor composes with the visibility slowdown.
+  self.targetPlaybackRate =
+      [self fpsRateFactor] * (self.visibilityReductionActive ? 0.85f : 1.0f);
 
   // Bitrate soft-cap only in reduced mode (helps multi-GB HEVC aerials).
   double peakBitRate = 0.0;
@@ -1108,6 +1141,61 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
       [player playImmediatelyAtRate:self.targetPlaybackRate];
     }
   }
+}
+
+#pragma mark - Playback Rate (FPS × Speed)
+
+/// Clamp user-requested FPS into the range this specific video supports:
+/// [0.25x … 2x] of its nominal frame rate, bounded by the absolute slider
+/// range [1 … 120]. MIN/MAX keeps a stale saved value from e.g. playing a
+/// 120 FPS request against a 24 FPS clip.
+- (CGFloat)clampedPlaybackFPS {
+  CGFloat nominal = (self.videoNominalFPS > 0.0) ? self.videoNominalFPS : 30.0;
+  CGFloat minFPS = MAX(1.0, nominal * 0.25);
+  CGFloat maxFPS = MIN(120.0, nominal * 2.0);
+  CGFloat requested =
+      (self.userPlaybackFPS > 0.0) ? self.userPlaybackFPS : nominal;
+  return MIN(MAX(requested, minFPS), maxFPS);
+}
+
+/// Combined AVPlayer rate = fpsFactor × speedFactor.
+/// - FPS factor: clampedFPS / nominalFPS  (stylised frame-rate control)
+/// - Speed factor: smooth playback speed multiplier (0.25–4×)
+/// Final result clamped to [0.1 … 4.0] so AVPlayer stays well-behaved.
+- (CGFloat)playbackRateFactor {
+  CGFloat nominal = (self.videoNominalFPS > 0.0) ? self.videoNominalFPS : 30.0;
+  CGFloat fpsFactor = [self clampedPlaybackFPS] / nominal;
+  if (!isfinite(fpsFactor) || fpsFactor <= 0.0)
+    fpsFactor = 1.0;
+  fpsFactor = MIN(MAX(fpsFactor, 0.25), 2.0);
+
+  CGFloat speed = self.userPlaybackSpeed;
+  if (!isfinite(speed) || speed <= 0.0)
+    speed = 1.0;
+  speed = MIN(MAX(speed, 0.25), 4.0);
+
+  CGFloat combined = fpsFactor * speed;
+  return MIN(MAX(combined, 0.1), 4.0);
+}
+
+/// Back-compat alias kept so existing call-sites in this file compile.
+- (CGFloat)fpsRateFactor {
+  return [self playbackRateFactor];
+}
+
+- (void)setPlaybackFPS:(double)fps {
+  self.userPlaybackFPS = fps;
+  NSLog(@"[Daemon] FPS update: user %.1f, nominal %.2f → clamped %.1f (rate %.3f)",
+        fps, self.videoNominalFPS, [self clampedPlaybackFPS],
+        [self playbackRateFactor]);
+  [self applyPerformanceSettings];
+}
+
+- (void)setPlaybackSpeed:(double)speed {
+  self.userPlaybackSpeed = speed;
+  NSLog(@"[Daemon] Speed update: user %.2f → rate %.3f",
+        speed, [self playbackRateFactor]);
+  [self applyPerformanceSettings];
 }
 
 - (BOOL)isScreenLocked {
@@ -1302,6 +1390,28 @@ static void VolumeChangedCallback(CFNotificationCenterRef center,
   [daemon setVolume:volume];
 }
 
+static void FPSChangedCallback(CFNotificationCenterRef center, void *observer,
+                               CFStringRef name, const void *object,
+                               CFDictionaryRef userInfo) {
+  VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
+  double fps =
+      [[NSUserDefaults standardUserDefaults] doubleForKey:@"wallpaperfps"];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [daemon setPlaybackFPS:fps];
+  });
+}
+
+static void SpeedChangedCallback(CFNotificationCenterRef center, void *observer,
+                                  CFStringRef name, const void *object,
+                                  CFDictionaryRef userInfo) {
+  VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
+  double speed =
+      [[NSUserDefaults standardUserDefaults] doubleForKey:@"wallpaperspeed"];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [daemon setPlaybackSpeed:speed];
+  });
+}
+
 static void SpaceChangeCallback(CFNotificationCenterRef center, void *observer,
                                 CFStringRef name, const void *object,
                                 CFDictionaryRef userInfo) {
@@ -1416,6 +1526,18 @@ int main(int argc, const char *argv[]) {
         CFNotificationCenterGetDarwinNotifyCenter(),
         (__bridge const void *)(daemon), VolumeChangedCallback,
         CFSTR("com.live.wallpaper.volumeChanged"), NULL,
+        CFNotificationSuspensionBehaviorDeliverImmediately);
+
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        (__bridge const void *)(daemon), FPSChangedCallback,
+        CFSTR("com.live.wallpaper.fpsChanged"), NULL,
+        CFNotificationSuspensionBehaviorDeliverImmediately);
+
+    CFNotificationCenterAddObserver(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        (__bridge const void *)(daemon), SpeedChangedCallback,
+        CFSTR("com.live.wallpaper.speedChanged"), NULL,
         CFNotificationSuspensionBehaviorDeliverImmediately);
 
     CFNotificationCenterAddObserver(

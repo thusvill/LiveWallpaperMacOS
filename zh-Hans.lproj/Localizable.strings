@@ -24,6 +24,8 @@
 "random_on_lid" = "开盖唤醒时随机壁纸（需要重启应用）";
 "pause_when_active" = "应用激活时暂停";
 "video_volume" = "视频音量";
+"video_fps" = "视频帧率";
+"video_fps_native_format" = "视频原生：%d FPS";
 "optimize_codecs" = "优化视频编码";
 "optimize" = "优化 🛠️";
 "clear_cache" = "清除缓存";
