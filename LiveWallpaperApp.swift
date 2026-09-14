@@ -35,9 +35,9 @@ struct LiveWallpaperApp: App {
 }
 
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem!
-    var window: NSWindow!
+    var window: NSWindow?
     
     let engine = sharedEngine
 
@@ -59,26 +59,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: NSLocalizedString("Quit", comment: ""), action: #selector(quit), keyEquivalent: "q"))
         statusItem.menu = menu
 
-        // Create main window with ContentView
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView,.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        //hide titlebar
-        //window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
-        window.toolbarStyle = .unified
+        // // Create main window with ContentView
+        // window = NSWindow(
+        //     contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+        //     styleMask: [.titled, .closable, .resizable, .fullSizeContentView,.borderless],
+        //     backing: .buffered,
+        //     defer: false
+        // )
+        // //hide titlebar
+        // //window.titleVisibility = .hidden
+        // window.titlebarAppearsTransparent = true
+        // window.isMovableByWindowBackground = true
+        // window.toolbarStyle = .unified
         
-        window.center()
-        window.contentView = NSHostingView(rootView: ContentView())
-        window.title = "LiveWallpaper"
-        window.isReleasedWhenClosed = false
-        // Menu-bar agent: do not force the config window on every launch
-        // (LaunchAgents / login items would keep reopening it).
-        window.orderOut(nil)
+        // window.center()
+        // window.contentView = NSHostingView(rootView: ContentView())
+        // window.title = "LiveWallpaper"
+        // window.isReleasedWhenClosed = false
+        // // Menu-bar agent: do not force the config window on every launch
+        // // (LaunchAgents / login items would keep reopening it).
+        // window.orderOut(nil)
         
         if !hasAccessibilityAccess() {
             requestAccessibilityAccess()
@@ -93,21 +93,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
     }
 
-    // Show the config window
+    private func makeWindow() -> NSWindow {
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        w.titlebarAppearsTransparent = true
+        w.isMovableByWindowBackground = true
+        w.toolbarStyle = .unified
+        w.center()
+        w.contentView = NSHostingView(rootView: ContentView())
+        w.title = "LiveWallpaper"
+        w.isReleasedWhenClosed = false
+        w.delegate = self
+        return w
+        
+    }
+
+
     @objc func showWindow() {
-        window.makeKeyAndOrderFront(nil)
+         if window == nil {
+            window = makeWindow()
+        }
+        window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         
     }
 
-    // Hide the window without quitting the app
-    @objc func hideWindow() {
-        window.orderOut(nil)
+
+   @objc func hideWindow() {
+       
+        window?.close()
     }
 
-    // Quit the app completely
+func windowWillClose(_ notification: Notification) {
+    window?.contentView = nil
+    window = nil
+    ThumbnailCache.shared.clearCache()
+    ThumbnailCache.shared.tearDownObservers()
+}
+
     @objc func quit() {
-        
         engine?.terminateApplication()
         NSApp.terminate(nil)
     }

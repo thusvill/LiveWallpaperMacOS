@@ -99,7 +99,10 @@ static NSString *folderPath = nil;
     } @catch (NSException *ex) {
       NSLog(@"WallpaperEngine init exception: %@ — %@", ex.name, ex.reason);
     }
+
+    [self setupNotifications];
   }
+  
   return self;
 }
 

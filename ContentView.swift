@@ -170,7 +170,7 @@ struct ContentView: View {
     @StateObject private var displayManager = DisplayManager()
 
     @Environment(\.dismiss) private var dismiss
-    static var didCloseOnLaunch = false
+    
 
     var body: some View {
 
@@ -203,15 +203,16 @@ struct ContentView: View {
             .ignoresSafeArea(.all)
             .compatibleGlass(cornerRadius: 16)
             .frame(minWidth: 600, minHeight: 250)
-            //.sheet(isPresented: $showSettings) { SettingsView(viewModel: viewModel) }
             .onAppear {
-                viewModel.loadDisplays()
-                viewModel.reloadContent()
-                if !Self.didCloseOnLaunch, let engine = sharedEngine, !engine.isFirstLaunch() {
-                    Self.didCloseOnLaunch = true
-                    dismiss()
-                }
-            }
+    ThumbnailCache.shared.setUpObservers()
+    viewModel.loadDisplays()
+    viewModel.reloadContent()
+}
+            .onDisappear {
+    // Proactively tear down heavy resources before ARC collects the views.
+    displayManager.tearDown()
+    viewModel.tearDown()
+}
 
             if showSettings {
 
@@ -385,6 +386,7 @@ struct QualityBadge: View {
     }
 }
 
+
 // MARK: - Display Manager
 class DisplayManager: ObservableObject {
     @Published var displays: [DisplayObjc] = []
@@ -398,7 +400,6 @@ class DisplayManager: ObservableObject {
     }
 
     deinit {
-        
         CGDisplayRemoveReconfigurationCallback(
             displayReconfigCallback, Unmanaged.passUnretained(self).toOpaque())
     }
@@ -408,6 +409,13 @@ class DisplayManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             self?.displays = sharedEngine?.getDisplays() as? [DisplayObjc] ?? []
         }
+    }
+
+    func tearDown() {
+        CGDisplayRemoveReconfigurationCallback(
+            displayReconfigCallback, Unmanaged.passUnretained(self).toOpaque())
+        displays.removeAll()
+        selectedDisplays.removeAll()
     }
 }
 
@@ -920,9 +928,20 @@ class ThumbnailCache: ObservableObject {
     static let shared = ThumbnailCache()
     private let cache = NSCache<NSString, NSImage>()
     @Published var lastUpdate = Date()
+    private var observersActive = false
 
     private init() {
-        cache.countLimit = 100
+        // Start with a small footprint; thumbnails are only needed
+        // while the GUI window is open.
+        cache.countLimit = 50
+        cache.totalCostLimit = 5 * 1024 * 1024  // 5 MB (was 20 MB)
+    }
+
+    /// Called when the GUI window opens — re-registers notification
+    /// observers so the grid can refresh when thumbnails arrive.
+    func setUpObservers() {
+        guard !observersActive else { return }
+        observersActive = true
 
         NotificationCenter.default.addObserver(
             self,
@@ -937,6 +956,21 @@ class ThumbnailCache: ObservableObject {
             name: NSNotification.Name("ThumbnailsGenerated"),
             object: nil
         )
+    }
+
+    /// Called when the GUI window closes — removes observers so the
+    /// singleton no longer receives notifications (and the associated
+    /// Combine publisher infrastructure can be released).
+    func tearDownObservers() {
+        guard observersActive else { return }
+        observersActive = false
+
+        NotificationCenter.default.removeObserver(self,
+                                                  name: NSNotification.Name("ThumbnailSaved"),
+                                                  object: nil)
+        NotificationCenter.default.removeObserver(self,
+                                                  name: NSNotification.Name("ThumbnailsGenerated"),
+                                                  object: nil)
     }
 
     @objc private func thumbnailSaved(_ notification: Notification) {
@@ -966,7 +1000,7 @@ class ThumbnailCache: ObservableObject {
             return nil
         }
 
-        cache.setObject(img, forKey: path as NSString)
+        cache.setObject(img, forKey: path as NSString, cost: img.approximateByteCost)
         return img
     }
 
@@ -975,7 +1009,15 @@ class ThumbnailCache: ObservableObject {
         lastUpdate = Date()
     }
 }
+extension NSImage {
 
+
+    var approximateByteCost: Int {
+        guard let rep = representations.max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh })
+        else { return 0 }
+        return rep.pixelsWide * rep.pixelsHigh * 4
+    }
+}
 // MARK: - Wallpaper View Model
 @MainActor
 class WallpaperViewModel: ObservableObject {
@@ -1001,7 +1043,8 @@ class WallpaperViewModel: ObservableObject {
     init(engine: WallpaperEngine = sharedEngine ?? WallpaperEngine.shared()) {
         self.engine = engine
         loadSettings()
-        self.engine.setupNotifications()
+        
+        
     }
 
     
@@ -1051,62 +1094,72 @@ class WallpaperViewModel: ObservableObject {
         }
     }
 
-    func reloadContent() {
-        engine.checkFolderPath()
-        ThumbnailCache.shared.clearCache()
+func reloadContent() {
+    engine.checkFolderPath()
+    ThumbnailCache.shared.clearCache()
 
-        guard let files = try? FileManager.default.contentsOfDirectory(atPath: folderPath) else {
-            return
-        }
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: folderPath) else {
+        return
+    }
 
-        let videoFiles = files.filter { f in
-            let e = (f as NSString).pathExtension.lowercased()
-            return e == "mp4" || e == "mov"
-        }
+    let videoFiles = files.filter { f in
+        let e = (f as NSString).pathExtension.lowercased()
+        return e == "mp4" || e == "mov"
+    }
 
-        let reloadID = UUID()
-        reloadIDLock.lock()
-        currentReloadID = reloadID
-        reloadIDLock.unlock()
+    let reloadID = UUID()
+    reloadIDLock.lock()
+    currentReloadID = reloadID
+    reloadIDLock.unlock()
 
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self = self else { return }
+    DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        guard let self = self else { return }
 
-            let newVideos: [VideoItem] = videoFiles.map { f in
-                let full = (self.folderPath as NSString).appendingPathComponent(f)
-                let base = (f as NSString).deletingPathExtension
-                let thumbPath =
-                    (self.engine.thumbnailCachePath() as NSString?)?.appendingPathComponent(
-                        "\(base).png") ?? ""
+        var newVideos: [VideoItem] = []
+        let badgeQueue = OperationQueue()
+        badgeQueue.maxConcurrentOperationCount = 3
 
-                var item = VideoItem(filename: f, path: full, thumbnailPath: thumbPath)
+        let group = DispatchGroup()
+
+        for f in videoFiles {
+            let full = (self.folderPath as NSString).appendingPathComponent(f)
+            let base = (f as NSString).deletingPathExtension
+            let thumbPath =
+                (self.engine.thumbnailCachePath() as NSString?)?.appendingPathComponent(
+                    "\(base).png") ?? ""
+
+            var item = VideoItem(filename: f, path: full, thumbnailPath: thumbPath)
+            newVideos.append(item)
+
+            group.enter()
+            badgeQueue.addOperation {
                 self.engine.videoQualityBadge(for: URL(fileURLWithPath: full)) { badge in
                     item.quality = badge
+                    group.leave()
                 }
-                return item
             }
+        }
 
-            DispatchQueue.main.async { [weak self] in
-                guard let self = self else { return }
+        group.wait()
 
-                self.reloadIDLock.lock()
-                let isValid = reloadID == self.currentReloadID
-                self.reloadIDLock.unlock()
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.reloadIDLock.lock()
+            let isValid = reloadID == self.currentReloadID
+            self.reloadIDLock.unlock()
 
-                if isValid {
-                    self.videos = newVideos
-
-                    let missingThumbnails = newVideos.filter { $0.loadThumbnail() == nil }
-                    if !missingThumbnails.isEmpty {
-                        NSLog(
-                            "Found \(missingThumbnails.count) videos without thumbnails, generating..."
-                        )
-                        self.engine.generateThumbnails()
-                    }
+            if isValid {
+                self.videos = newVideos
+                let missingThumbnails = newVideos.filter { $0.loadThumbnail() == nil }
+                if !missingThumbnails.isEmpty {
+                    NSLog("Found \(missingThumbnails.count) videos without thumbnails, generating...")
+                    self.engine.generateThumbnails()
                 }
             }
         }
     }
+}
+   
 
     func loadDisplays() {
         displays = sharedEngine?.getDisplays() as? [DisplayObjc] ?? []
@@ -1132,6 +1185,16 @@ class WallpaperViewModel: ObservableObject {
 
     func optimizeVideos() {
         engine.generateStaticWallpapers(forFolder: folderPath) {}
+    }
+
+    /// Call when the GUI window closes.  Clears view-local state so ARC
+    /// can reclaim the video list, strings, and any pending closures.
+    func tearDown() {
+        videos.removeAll()
+        displays.removeAll()
+        reloadIDLock.lock()
+        currentReloadID = UUID()  // invalidate any in-flight reload
+        reloadIDLock.unlock()
     }
 
     private func getDisplayName(for id: CGDirectDisplayID) -> String {
