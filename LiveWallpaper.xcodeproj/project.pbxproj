@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1B2C3D4E5F6000000000001 /* ImageIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000002 /* ImageIO.framework */; };
 		048ABDDD2F4C1652001393B0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 048ABDDC2F4C1652001393B0 /* AppIcon.icon */; };
+		04D1B25A305AD1E8009E2F8B /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055432EEA795200F90A44 /* CoreMedia.framework */; };
 		04E055422EEA794C00F90A44 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055412EEA794C00F90A44 /* AVFoundation.framework */; };
 		04E055442EEA795200F90A44 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055432EEA795200F90A44 /* CoreMedia.framework */; };
 		04E055462EEA795900F90A44 /* CoreVideo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055452EEA795900F90A44 /* CoreVideo.framework */; };
@@ -57,6 +57,7 @@
 		04E057922EEAB43200F90A44 /* scanner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E057622EEAB43200F90A44 /* scanner.cpp */; };
 		04E057932EEAB43200F90A44 /* directives.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 04E057452EEAB43200F90A44 /* directives.cpp */; };
 		04F816E02EEBE3FB00CFB473 /* DisplayObjc.mm in Sources */ = {isa = PBXBuildFile; fileRef = 04F816DF2EEBE3FB00CFB473 /* DisplayObjc.mm */; };
+		A1B2C3D4E5F6000000000001 /* ImageIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000002 /* ImageIO.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -79,7 +80,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		A1B2C3D4E5F6000000000002 /* ImageIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ImageIO.framework; path = System/Library/Frameworks/ImageIO.framework; sourceTree = SDKROOT; };
 		048ABDDC2F4C1652001393B0 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
 		04E0070A2EEA738C00F90A44 /* LiveWallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiveWallpaper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		04E055412EEA794C00F90A44 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -273,6 +273,7 @@
 		04E058962EEAB54E00F90A44 /* yaml-cpp.pc.in */ = {isa = PBXFileReference; lastKnownFileType = text; path = "yaml-cpp.pc.in"; sourceTree = "<group>"; };
 		04F816DE2EEBE3FB00CFB473 /* DisplayObjc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DisplayObjc.h; sourceTree = SOURCE_ROOT; };
 		04F816DF2EEBE3FB00CFB473 /* DisplayObjc.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DisplayObjc.mm; sourceTree = SOURCE_ROOT; };
+		A1B2C3D4E5F6000000000002 /* ImageIO.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ImageIO.framework; path = System/Library/Frameworks/ImageIO.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -301,13 +302,21 @@
 				04E055F32EEA8D6500F90A44 /* IOKit.framework in Frameworks */,
 				04E055F22EEA8D5C00F90A44 /* AVFoundation.framework in Frameworks */,
 				04E055F12EEA8D5700F90A44 /* Cocoa.framework in Frameworks */,
-				04E055442EEA795200F90A44 /* CoreMedia.framework in Frameworks */,
+				04D1B25A305AD1E8009E2F8B /* CoreMedia.framework in Frameworks */,
 				A1B2C3D4E5F6000000000001 /* ImageIO.framework in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		04D1B25B305AD1E8009E2F8B /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F6000000000002 /* ImageIO.framework */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
 		04E007012EEA738C00F90A44 = {
 			isa = PBXGroup;
 			children = (
@@ -316,6 +325,7 @@
 				04E054BD2EEA76F600F90A44 /* Frameworks */,
 				04E0070B2EEA738C00F90A44 /* Products */,
 				048ABDDC2F4C1652001393B0 /* AppIcon.icon */,
+				04D1B25B305AD1E8009E2F8B /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -674,6 +684,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
+				KnownAssetTags = (
+					New,
+				);
 				LastSwiftUpdateCheck = 2610;
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
@@ -905,8 +918,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/vendor/yaml-cpp/include";
 				INFOPLIST_KEY_CFBundleDisplayName = LiveWallpaper;
-				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -960,8 +973,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = "$(SRCROOT)/vendor/yaml-cpp/include";
 				INFOPLIST_KEY_CFBundleDisplayName = LiveWallpaper;
-				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSAppleEventsUsageDescription = "";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (

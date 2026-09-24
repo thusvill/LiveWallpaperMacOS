@@ -616,6 +616,10 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   }
   // Prevent audio from ducking other apps when volume > 0.
   player.allowsExternalPlayback = NO;
+    // Wallpaper video should never block display/system sleep.
+    if (@available(macOS 10.15, *)) {
+      player.preventsDisplaySleepDuringVideoPlayback = NO;
+    }
 
   AVPlayerLooper *looper =
       [AVPlayerLooper playerLooperWithPlayer:player templateItem:item];
@@ -1158,16 +1162,96 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
   return MIN(MAX(requested, minFPS), maxFPS);
 }
 
-/// Combined AVPlayer rate = fpsFactor × speedFactor.
-/// - FPS factor: clampedFPS / nominalFPS  (stylised frame-rate control)
-/// - Speed factor: smooth playback speed multiplier (0.25–4×)
+/// Display's actual refresh rate in Hz. CGDisplayModeGetRefreshRate can
+/// report 0 on many built-in / ProMotion panels, so fall back to
+/// NSScreen.maximumFramesPerSecond (macOS 12+), then 60 as a last resort.
+- (double)targetDisplayRefreshHz {
+  CGDirectDisplayID did = self.targetDisplayID;
+  if (did == kCGNullDirectDisplay)
+    return 60.0;
+
+  CGDisplayModeRef mode = CGDisplayCopyDisplayMode(did);
+  double hz = mode ? CGDisplayModeGetRefreshRate(mode) : 0.0;
+  if (mode)
+    CGDisplayModeRelease(mode);
+
+  if (hz <= 1.0) {
+    if (@available(macOS 12.0, *)) {
+      NSScreen *screen = self.targetScreen ?: [NSScreen mainScreen];
+      if (screen.maximumFramesPerSecond > 0) {
+        hz = (double)screen.maximumFramesPerSecond;
+      }
+    }
+  }
+  return hz > 1.0 ? hz : 60.0;
+}
+
+/// Candidate rate multipliers that divide/multiply cleanly — chosen so that,
+/// combined with a typical 60/120Hz display, they tend to land on a
+/// whole-refresh cadence (avoids CMTime rounding drift from ratios like
+/// 25/30 = 0.8333...).
+static const struct { double num; double den; } kNiceRatios[10] = {
+  {1, 4}, {1, 3}, {1, 2}, {2, 3}, {1, 1}, {4, 3}, {3, 2}, {2, 1}, {3, 1}, {4, 1}
+};
+
+/// Snaps the raw requested-FPS/nominal-FPS ratio to the nearest "nice"
+/// fraction, then further nudges the resulting effective FPS toward a value
+/// that divides the display's refresh rate evenly — this is what actually
+/// removes the flicker, since arbitrary effective-FPS values beat against
+/// vsync (classic pulldown/judder pattern).
+- (CGFloat)snappedFpsFactor {
+  CGFloat nominal = (self.videoNominalFPS > 0.0) ? self.videoNominalFPS : 30.0;
+  CGFloat rawFactor = [self clampedPlaybackFPS] / nominal;
+  if (!isfinite(rawFactor) || rawFactor <= 0.0)
+    rawFactor = 1.0;
+
+  // Step 1: snap to nearest simple fraction.
+  double bestRatio = 1.0;
+  double bestDelta = DBL_MAX;
+  for (int i = 0; i < 10; i++) {
+    double r = kNiceRatios[i].num / kNiceRatios[i].den;
+    double delta = fabs(r - rawFactor);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestRatio = r;
+    }
+  }
+
+  // Step 2: check whether snapping the *effective* FPS to a clean divisor
+  // of the display refresh rate is a close enough match to prefer instead.
+  double displayHz = [self targetDisplayRefreshHz];
+  double effectiveFPS = nominal * bestRatio;
+
+  double bestDivisorFPS = effectiveFPS;
+  double bestDivisorDelta = DBL_MAX;
+  for (int n = 1; n <= 8; n++) {
+    double candidate = displayHz / n; // e.g. 60,30,20,15,12,10,8.57,7.5
+    double delta = fabs(candidate - effectiveFPS);
+    if (delta < bestDivisorDelta) {
+      bestDivisorDelta = delta;
+      bestDivisorFPS = candidate;
+    }
+  }
+  // Only override the nice-ratio pick when the divisor match is close
+  // (within ~12% of the requested effective FPS) — avoids fighting the
+  // user's intent for genuinely different target speeds.
+  if (fabs(bestDivisorFPS - effectiveFPS) / MAX(effectiveFPS, 1.0) < 0.12) {
+    effectiveFPS = bestDivisorFPS;
+    bestRatio = effectiveFPS / nominal;
+  }
+
+  bestRatio = MIN(MAX(bestRatio, 0.25), 2.0);
+  return (CGFloat)bestRatio;
+}
+
+/// Combined AVPlayer rate = snappedFpsFactor × speedFactor.
+/// - FPS factor: snapped to a clean ratio (stylised frame-rate control,
+///   flicker-safe against the display's vsync).
+/// - Speed factor: smooth playback speed multiplier (0.25–4×), unsnapped —
+///   deliberate speed changes are expected to look like speed changes.
 /// Final result clamped to [0.1 … 4.0] so AVPlayer stays well-behaved.
 - (CGFloat)playbackRateFactor {
-  CGFloat nominal = (self.videoNominalFPS > 0.0) ? self.videoNominalFPS : 30.0;
-  CGFloat fpsFactor = [self clampedPlaybackFPS] / nominal;
-  if (!isfinite(fpsFactor) || fpsFactor <= 0.0)
-    fpsFactor = 1.0;
-  fpsFactor = MIN(MAX(fpsFactor, 0.25), 2.0);
+  CGFloat fpsFactor = [self snappedFpsFactor];
 
   CGFloat speed = self.userPlaybackSpeed;
   if (!isfinite(speed) || speed <= 0.0)
@@ -1185,17 +1269,34 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
 
 - (void)setPlaybackFPS:(double)fps {
   self.userPlaybackFPS = fps;
-  NSLog(@"[Daemon] FPS update: user %.1f, nominal %.2f → clamped %.1f (rate %.3f)",
-        fps, self.videoNominalFPS, [self clampedPlaybackFPS],
+  NSLog(@"[Daemon] FPS update: user %.1f, nominal %.2f → snapped factor %.4f (rate %.3f)",
+        fps, self.videoNominalFPS, [self snappedFpsFactor],
         [self playbackRateFactor]);
-  [self applyPerformanceSettings];
+  [self applyRateOnly];
 }
 
 - (void)setPlaybackSpeed:(double)speed {
   self.userPlaybackSpeed = speed;
   NSLog(@"[Daemon] Speed update: user %.2f → rate %.3f",
         speed, [self playbackRateFactor]);
-  [self applyPerformanceSettings];
+  [self applyRateOnly];
+}
+
+/// Cheap rate-only update for FPS/speed slider changes. Deliberately does
+/// NOT touch preferredMaximumResolution / preferredPeakBitRate / layer
+/// contentsScale (that's applyPerformanceSettings' job, for actual
+/// battery/visibility reduction) and uses `player.rate =` instead of
+/// `playImmediatelyAtRate:` so a player that's mid-playback is retimed
+/// smoothly rather than resynced as if starting fresh.
+- (void)applyRateOnly {
+  self.targetPlaybackRate =
+      [self playbackRateFactor] * (self.visibilityReductionActive ? 0.85f : 1.0f);
+
+  for (AVQueuePlayer *player in _players) {
+    if (player.rate > 0.0f) {
+      player.rate = self.targetPlaybackRate;
+    }
+  }
 }
 
 - (BOOL)isScreenLocked {
@@ -1390,26 +1491,54 @@ static void VolumeChangedCallback(CFNotificationCenterRef center,
   [daemon setVolume:volume];
 }
 
+/// Debounced FPS-change handler. Slider drags can post this notification
+/// many times a second; without debouncing that means repeated rate
+/// updates in quick succession. We coalesce to one update ~150ms after
+/// the last change.
 static void FPSChangedCallback(CFNotificationCenterRef center, void *observer,
                                CFStringRef name, const void *object,
                                CFDictionaryRef userInfo) {
   VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
-  double fps =
-      [[NSUserDefaults standardUserDefaults] doubleForKey:@"wallpaperfps"];
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [daemon setPlaybackFPS:fps];
+  static dispatch_source_t debounceTimer;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    debounceTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                           dispatch_get_main_queue());
+    dispatch_source_set_event_handler(debounceTimer, ^{
+      double fps =
+          [[NSUserDefaults standardUserDefaults] doubleForKey:@"wallpaperfps"];
+      [daemon setPlaybackFPS:fps];
+    });
+    dispatch_resume(debounceTimer);
   });
+  dispatch_source_set_timer(
+      debounceTimer,
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(150 * NSEC_PER_MSEC)),
+      DISPATCH_TIME_FOREVER, 0);
 }
 
+/// Same debouncing treatment as FPS — speed slider drags shouldn't spam
+/// rate updates either.
 static void SpeedChangedCallback(CFNotificationCenterRef center, void *observer,
                                   CFStringRef name, const void *object,
                                   CFDictionaryRef userInfo) {
   VideoWallpaperDaemon *daemon = (__bridge VideoWallpaperDaemon *)observer;
-  double speed =
-      [[NSUserDefaults standardUserDefaults] doubleForKey:@"wallpaperspeed"];
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [daemon setPlaybackSpeed:speed];
+  static dispatch_source_t debounceTimer;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    debounceTimer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                           dispatch_get_main_queue());
+    dispatch_source_set_event_handler(debounceTimer, ^{
+      double speed = [[NSUserDefaults standardUserDefaults]
+          doubleForKey:@"wallpaperspeed"];
+      [daemon setPlaybackSpeed:speed];
+    });
+    dispatch_resume(debounceTimer);
   });
+  dispatch_source_set_timer(
+      debounceTimer,
+      dispatch_time(DISPATCH_TIME_NOW, (int64_t)(150 * NSEC_PER_MSEC)),
+      DISPATCH_TIME_FOREVER, 0);
 }
 
 static void SpaceChangeCallback(CFNotificationCenterRef center, void *observer,

@@ -19,7 +19,7 @@ Run this on terminal `brew tap thusvill/livewallpaper && brew install --cask liv
   
 Run this:
 ```bash
-git clone --recurse-submodules https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu)
+git clone --single-branch --branch objectiveC https://github.com/thusvill/LiveWallpaperMacOS.git && cd LiveWallpaperMacOS && mkdir -p build && cd build && cmake .. && make -j$(sysctl -n hw.ncpu) 
 ```
 
 ## Guide for DMG Installation
