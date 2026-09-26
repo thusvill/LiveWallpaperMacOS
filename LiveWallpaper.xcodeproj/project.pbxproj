@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		048ABDDD2F4C1652001393B0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 048ABDDC2F4C1652001393B0 /* AppIcon.icon */; };
+		048ABE112F4D0002001393B0 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 048ABE102F4D0001001393B0 /* Localizable.strings */; };
 		04D1B25A305AD1E8009E2F8B /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055432EEA795200F90A44 /* CoreMedia.framework */; };
 		04E055422EEA794C00F90A44 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055412EEA794C00F90A44 /* AVFoundation.framework */; };
 		04E055442EEA795200F90A44 /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 04E055432EEA795200F90A44 /* CoreMedia.framework */; };
@@ -81,6 +82,8 @@
 
 /* Begin PBXFileReference section */
 		048ABDDC2F4C1652001393B0 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = AppIcon.icon; sourceTree = "<group>"; };
+		048ABE122F4D0003001393B0 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		048ABE132F4D0004001393B0 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 		04E0070A2EEA738C00F90A44 /* LiveWallpaper.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiveWallpaper.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		04E055412EEA794C00F90A44 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		04E055432EEA795200F90A44 /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
@@ -325,6 +328,7 @@
 				04E054BD2EEA76F600F90A44 /* Frameworks */,
 				04E0070B2EEA738C00F90A44 /* Products */,
 				048ABDDC2F4C1652001393B0 /* AppIcon.icon */,
+				048ABE102F4D0001001393B0 /* Localizable.strings */,
 				04D1B25B305AD1E8009E2F8B /* Recovered References */,
 			);
 			sourceTree = "<group>";
@@ -642,6 +646,18 @@
 		};
 /* End PBXGroup section */
 
+/* Begin PBXVariantGroup section */
+		048ABE102F4D0001001393B0 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				048ABE122F4D0003001393B0 /* en */,
+				048ABE132F4D0004001393B0 /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
 /* Begin PBXNativeTarget section */
 		04E007092EEA738C00F90A44 /* LiveWallpaper */ = {
 			isa = PBXNativeTarget;
@@ -704,6 +720,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = 04E007012EEA738C00F90A44;
 			minimizedProjectReferenceProxies = 1;
@@ -724,6 +741,7 @@
 			files = (
 				04E057382EEAB3EE00F90A44 /* Assets.xcassets in Resources */,
 				048ABDDD2F4C1652001393B0 /* AppIcon.icon in Resources */,
+				048ABE112F4D0002001393B0 /* Localizable.strings in Resources */,
 			);
 		};
 /* End PBXResourcesBuildPhase section */
