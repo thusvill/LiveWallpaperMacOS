@@ -707,10 +707,20 @@ struct SettingsView: View {
                             Stepper("", value: $localMinutes, in: 1...1440, step: 4)
                                 .labelsHidden()  // This hides the extra space Stepper usually takes
                                 .onChange(of: localMinutes) { newValue in
-                                    sharedEngine?.rotationDelay = Int32(newValue * 60)
+                                    let seconds = Int32(newValue * 60)
+                                    let previous = sharedEngine?.rotationDelay ?? seconds
+                                    sharedEngine?.rotationDelay = seconds
                                     UserDefaults.standard.set(
-                                        (newValue * 60), forKey: UserDefaultsKeys.rdelay)
+                                        Int(seconds), forKey: UserDefaultsKeys.rdelay)
                                     print("Delay updated to: \(sharedEngine?.rotationDelay ?? 0)")
+                                    // NSTimer keeps the interval it was created with. Opening
+                                    // settings writes the current value back, so only a real
+                                    // change should rebuild the running timer.
+                                    if seconds != previous,
+                                        UserDefaults.standard.bool(forKey: UserDefaultsKeys.rotation)
+                                    {
+                                        sharedEngine?.startWallpaperRotation()
+                                    }
                                 }
 
                             // 3. The Formatted Unit
