@@ -257,10 +257,7 @@
         .hero-video-overlay {
             position: absolute;
             inset: 0;
-            background: linear-gradient(180deg,
-                rgba(0,0,0,0.75) 0%,
-                rgba(0,0,0,0.55) 50%,
-                rgba(0,0,0,0.85) 100%);
+            background: linear-gradient(180deg, rgb(0 0 0 / 0%) 0%, rgba(0, 0, 0, 0.55) 50%, rgb(0 0 0 / 21%) 100%);
             z-index: 1;
         }
 
@@ -290,8 +287,33 @@
             border-radius: 20px;
             font-size: 0.85rem;
             color: var(--primary);
-            margin-bottom: 24px;
+            margin-bottom: 12px;
             backdrop-filter: blur(10px);
+        }
+
+        .hero-downloads {
+            display: inline-block;
+            padding: 7px 18px;
+            background: rgba(254, 186, 16, 0.078);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: var(--primary-dark);
+            margin-bottom: 12px;
+            backdrop-filter: blur(10px);
+        }
+
+        .hero-downloads svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            color: var(--primary);
+        }
+
+        .hero-downloads strong {
+            color: var(--primary);
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
         }
 
         h1 {
@@ -1016,6 +1038,8 @@
             .hero-content { padding: 16px 16px 28px; }
             .hero-logo img { width: min(280px, 65vw); }
             .hero-logo { margin-bottom: 14px; }
+            .hero-badge { margin-bottom: 10px; }
+            .hero-downloads { font-size: 0.8rem; margin-bottom: 18px; }
 
             h1 { font-size: clamp(1.75rem, 8.5vw, 2.8rem); letter-spacing: -0.5px; margin-bottom: 14px; }
             .hero-subtitle { font-size: 0.95rem; margin-bottom: 24px; }
@@ -1082,6 +1106,14 @@
         <div class="hero-content fade-in">
             <div class="hero-logo"><img src="src/icon_dark.png" alt="LiveWallpaper Logo"></div>
             <div class="hero-badge"><strong>Open Source</strong> • macOS 14+</div>
+            <div class="hero-downloads">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span><strong id="download-count">—</strong></span>
+            </div>
             <h1>
                 <span class="hero-gradient-text">Stunning Live</span><br>
                 Wallpapers for Your Mac
@@ -1483,6 +1515,33 @@ cmake .. &amp;&amp; make -j$(sysctl -n hw.ncpu)</div>
         }
 
         fetchGitHubData();
+
+        /* ──────────────────────────────────────────────
+           Total Download Count
+           Served by shields.io from the GitHub Releases
+           download totals of the repository.
+        ────────────────────────────────────────────── */
+        fetch(`https://img.shields.io/github/downloads/${REPO}/total.json`)
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                return response.json();
+            })
+            .then(data => {
+                // data.value contains the download count string (e.g. "1.2k" or "45")
+                const value = String(data && data.value || '').trim();
+
+                // shields.io answers 200 with "repo not found" for unknown repos,
+                // so a numeric check is needed in addition to the HTTP status.
+                if (!/^[\d,.]+[kKmM]?$/.test(value)) {
+                    throw new Error(`Unexpected value: "${value}"`);
+                }
+
+                document.getElementById('download-count').textContent = value;
+            })
+            .catch(error => {
+                console.error('Error fetching download count:', error);
+                document.getElementById('download-count').textContent = 'Unavailable';
+            });
 
         /* ──────────────────────────────────────────────
            Hamburger / Mobile Nav
