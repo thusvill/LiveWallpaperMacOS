@@ -3,7 +3,12 @@
 
 **Languages:** English | [简体中文](README.zh-Hans.md)
 
+
+  <img src="https://img.shields.io/github/downloads/thusvill/LiveWallpaperMacOS/total?style=for-the-badge&logo=github&color=d97706&label=total.%20downloads" alt="Total Downloads" width="200">
+
+
 ![Roller](./asset/livewall.png)
+
 
 This is an open-source live wallpaper application for MacOS 14+
 
