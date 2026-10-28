@@ -79,6 +79,9 @@ static NSString *folderPath = nil;
       for (auto &d : displays) {
         d.daemon = 0;
       }
+      // The saved list can be missing or stale; make sure every connected
+      // display is in it, or restore and rotation have nothing to act on.
+      ScanDisplays();
 
       NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
       _rotationType = (RotationType)[defaults integerForKey:@"rtype"];
@@ -1103,6 +1106,9 @@ static NSString *folderPath = nil;
   }
   SetWallpaperDisplay(pid, displayID, std::string([videoPath UTF8String]),
                       std::string([imagePath UTF8String]));
+  // Save right away: logout, restart and Force Quit never reach
+  // terminateApplication.
+  SaveSystem::Save(displays);
 }
 
 - (void)killAllDaemons {

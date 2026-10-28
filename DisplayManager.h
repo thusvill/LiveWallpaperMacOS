@@ -281,6 +281,7 @@ static void SetWallpaperDisplay(pid_t daemon_PID, CGDirectDisplayID displayID,
   }
 
   Display newDisplay;
+  newDisplay.uuid = DisplayUUIDFromID(displayID);
   newDisplay.screen = displayID;
   newDisplay.videoPath = videoPath;
   newDisplay.framePath = framePath;
