@@ -62,6 +62,8 @@
 @property(nonatomic, assign) BOOL lowPowerModeEnabled;
 @property(nonatomic, assign) BOOL visibilityReductionActive;
 @property(nonatomic, assign) BOOL playbackPaused;
+// Whether the current player item has an audio track (only when volume > 0).
+@property(nonatomic, assign) BOOL playingWithAudio;
 
 // Efficiency / reliability state
 @property(nonatomic, assign) BOOL cachedWallpaperHidden;
@@ -545,6 +547,34 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
                           }];
 }
 
+// A muted AVPlayer still keeps an audio output stream open, which holds a
+// coreaudiod sleep assertion and keeps external monitors awake. Leaving the
+// audio track out entirely avoids opening that stream.
+- (AVPlayerItem *)videoOnlyPlayerItemForAsset:(AVURLAsset *)urlAsset {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+  AVMutableComposition *composition = [AVMutableComposition composition];
+  for (AVAssetTrack *track in [urlAsset tracksWithMediaType:AVMediaTypeVideo]) {
+    AVMutableCompositionTrack *videoTrack =
+        [composition addMutableTrackWithMediaType:AVMediaTypeVideo
+                                 preferredTrackID:kCMPersistentTrackID_Invalid];
+    NSError *err = nil;
+    if (![videoTrack insertTimeRange:track.timeRange
+                             ofTrack:track
+                              atTime:kCMTimeZero
+                               error:&err]) {
+      NSLog(@"[Daemon] video-only item failed (%@), keeping audio track muted",
+            err.localizedDescription);
+      return [AVPlayerItem playerItemWithAsset:urlAsset];
+    }
+    videoTrack.preferredTransform = track.preferredTransform;
+  }
+#pragma clang diagnostic pop
+  if (composition.tracks.count == 0)
+    return [AVPlayerItem playerItemWithAsset:urlAsset];
+  return [AVPlayerItem playerItemWithAsset:composition];
+}
+
 - (void)finishSetupWithAsset:(AVURLAsset *)urlAsset
                       window:(NSWindow *)window
                  screenFrame:(NSRect)screenFrame {
@@ -579,7 +609,12 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
     return;
   }
 
-  AVPlayerItem *item = [AVPlayerItem playerItemWithAsset:urlAsset];
+  float vol =
+      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
+  self.playingWithAudio = (vol > 0.001f);
+  AVPlayerItem *item = self.playingWithAudio
+                           ? [AVPlayerItem playerItemWithAsset:urlAsset]
+                           : [self videoOnlyPlayerItemForAsset:urlAsset];
   // "tracks" was preloaded above, so synchronous track access is safe here.
   {
 #pragma clang diagnostic push
@@ -632,10 +667,8 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
   layer.contentsScale = _targetScreen.backingScaleFactor ?: 2.0;
   [window.contentView.layer addSublayer:layer];
 
-  float vol =
-      [[NSUserDefaults standardUserDefaults] floatForKey:@"wallpapervolume"];
   player.volume = vol;
-  player.muted = (vol <= 0.001f);
+  player.muted = !self.playingWithAudio;
 
   [_players addObject:player];
   [_playerLayers addObject:layer];
@@ -687,9 +720,13 @@ static void DisplayReconfigCallback(CGDirectDisplayID display,
 
   [self reassertDesktopWindowGeometry];
   self.targetPlaybackRate = [self fpsRateFactor];
-  [player playImmediatelyAtRate:self.targetPlaybackRate > 0
-                                    ? self.targetPlaybackRate
-                                    : 1.0f];
+  // A reload (e.g. after a volume change) can happen while playback is
+  // paused; resumeAllPlayers starts it once the pause reason is gone.
+  if (!self.playbackPaused) {
+    [player playImmediatelyAtRate:self.targetPlaybackRate > 0
+                                      ? self.targetPlaybackRate
+                                      : 1.0f];
+  }
 
   NSLog(@"✅ Wallpaper ready on %@ frame=%@ maxDecode=%.0fx%.0f attempt=%ld",
         _targetScreen, NSStringFromRect(screenFrame), maxPixels.width,
@@ -853,7 +890,9 @@ static void terminateWallpaperDaemonCallback(CFNotificationCenterRef center,
     self.lastVisibilitySample = now;
   }
 
-  BOOL shouldPause = screenLocked;
+  // Nothing is visible while the display sleeps, and a playing AVPlayer with
+  // sound keeps an audio stream open that stops monitors from going to standby.
+  BOOL shouldPause = screenLocked || CGDisplayIsAsleep(self.targetDisplayID);
 
   // Auto-pause when another app is frontmost (Finder + self exempt).
   // Fullscreen apps still pause under this policy — geometry is reasserted so
@@ -1388,11 +1427,16 @@ static const struct { double num; double den; } kNiceRatios[10] = {
 
 - (void)setVolume:(float)volume {
   NSLog(@"[Daemon] setVolume called: %.2f", volume);
+  [[NSUserDefaults standardUserDefaults] setFloat:volume
+                                           forKey:@"wallpapervolume"];
+  // Muted playback runs without an audio track; reload when that changes.
+  if (_players.count > 0 && (volume > 0.001f) != self.playingWithAudio) {
+    [self setupWallpaperWithVideo:self.videoPath];
+    return;
+  }
   for (AVQueuePlayer *player in _players) {
     player.volume = volume;
   }
-  [[NSUserDefaults standardUserDefaults] setFloat:volume
-                                           forKey:@"wallpapervolume"];
 }
 
 - (bool)setStaticWallpaper {
