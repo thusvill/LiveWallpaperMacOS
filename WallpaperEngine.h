@@ -101,6 +101,9 @@
 - (void)stopWallpaperRotation;
 - (void)restoreSessionAfterLaunch;
 
+- (void)optimizeVideosInFolder:(NSString *)folderPath
+                withCompletion:(void (^)(NSInteger converted, NSInteger skipped, NSInteger failed))completion;
+
 
 
 
