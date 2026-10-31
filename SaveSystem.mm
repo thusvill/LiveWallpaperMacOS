@@ -71,6 +71,16 @@ void SaveSystem::Save(const std::list<Display> &displays) {
   for (const auto &d : displays)
     root["displays"].push_back(d);
 
+  // Keep saved entries for displays that aren't connected right now, so
+  // unplugging a monitor or closing the lid doesn't forget their wallpaper.
+  for (const auto &saved : Load()) {
+    bool connected = false;
+    for (const auto &d : displays)
+      connected = connected || d.uuid == saved.uuid;
+    if (!connected && !saved.uuid.empty())
+      root["displays"].push_back(saved);
+  }
+
   std::ofstream out(configPath(), std::ios::trunc);
   if (!out) {
     return;
@@ -88,17 +98,24 @@ std::list<Display> SaveSystem::Load() {
   if (!std::filesystem::exists(path))
     return result;
 
-  YAML::Node root = YAML::LoadFile(path);
+  // A damaged file (e.g. cut off mid-write) must not crash every launch;
+  // treat it as having nothing saved.
+  try {
+    YAML::Node root = YAML::LoadFile(path);
 
-  if (!root["displays"])
-    return result;
+    if (!root["displays"])
+      return result;
 
-  for (auto node : root["displays"]) {
+    for (auto node : root["displays"]) {
 
-    Display d;
-    d = node.as<Display>();
-    d.screen = DisplayIDFromUUID(d.uuid);
-    result.push_back(d);
+      Display d;
+      d = node.as<Display>();
+      d.screen = DisplayIDFromUUID(d.uuid);
+      result.push_back(d);
+    }
+  } catch (const YAML::Exception &e) {
+    NSLog(@"Ignoring unreadable %s: %s", path.c_str(), e.what());
+    result.clear();
   }
 
   return result;
